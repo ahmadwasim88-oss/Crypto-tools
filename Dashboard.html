@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard with Life Widget</title>
+  <style>
+    /* --- Page Content --- */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    html,
+    body {
+      height: 100%;
+      width: 100%;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    
+    body {
+      background: linear-gradient(135deg, #ece9e6, #ffffff);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      padding: 10px;
+    }
+    
+    content {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2vh;
+      max-width: 400px;
+    }
+    
+    h1 {
+      color: #333;
+      font-size: calc(1.8rem+1vw);
+    }
+    
+    p {
+      margin-bottom: 24px;
+      color: #666;
+      font-size: calc(0.9rem+0.5vw);
+    }
+    
+    .button-container {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5vh;
+      width: 100%;
+    }
+    
+    a {
+      text-decoration: none;
+      padding: 1em;
+      background: linear-gradient(135deg, #6a11cb, #2575fc);
+      color: white;
+      border-radius: 12px;
+      font-size: calc(0.9rem+0.3vw);
+      font-weight: 600;
+      box-shadow: 0 6px 12px rgba(0, 0, 0, 0.1);
+      transition: all 0.3s ease;
+      cursor: pointer;
+      word-break: break-word;
+    }
+    
+    a:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
+      background: linear-gradient(135deg, #2575fc, #6a11cb);
+    }
+    
+    /* --- Mini Circular Widget --- */
+    #mini {
+      position: fixed;
+      top: 15px;
+      right: 15px;
+      width: 50px;
+      height: 50px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      cursor: pointer;
+      z-index: 9999;
+    }
+    
+    #mini svg {
+      width: 100%;
+      height: 100%;
+      transform: rotate(-90deg);
+    }
+    
+    #mini circle {
+      fill: none;
+      stroke-width: 5;
+      stroke-linecap: round;
+    }
+    
+    .bg-circle {
+      stroke: rgba(0, 0, 0, 0.1);
+    }
+    
+    .progress-circle {
+      stroke: #6a11cb;
+      stroke-dasharray: 169.646;
+      stroke-dashoffset: 169.646;
+      transition: stroke-dashoffset 0.5s linear;
+    }
+    
+    .circle-text {
+      position: absolute;
+      font-size: 0.65rem;
+      font-weight: 600;
+      color: #6a11cb;
+      pointer-events: none;
+      text-align: center;
+    }
+    
+    /* --- Expanded Widget Card --- */
+    .card {
+      position: fixed;
+      top: 15px;
+      right: 15px;
+      width: 220px;
+      background: linear-gradient(135deg, #6a11cb, #2575fc);
+      border-radius: 12px;
+      padding: 12px;
+      text-align: center;
+      cursor: pointer;
+      z-index: 9998;
+      color: #fff;
+      box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+      display: none;
+    }
+    
+    .edit {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      font-size: 16px;
+      cursor: pointer;
+      opacity: 0.8;
+    }
+    
+    .edit:hover {
+      opacity: 1;
+    }
+    
+    input,
+    button {
+      width: 100%;
+      padding: 6px;
+      margin: 4px 0;
+      border-radius: 8px;
+      border: none;
+      font-size: 0.8rem;
+    }
+    
+    input {
+      background: rgba(255, 255, 255, 0.15);
+      color: #fff;
+    }
+    
+    button {
+      background: #22c55e;
+      cursor: pointer;
+      font-weight: 600;
+      color: #fff;
+    }
+    
+    #widget {
+      margin-top: 8px;
+    }
+    
+    .bar-container {
+      width: 100%;
+      height: 8px;
+      background: rgba(255, 255, 255, 0.3);
+      border-radius: 6px;
+      overflow: hidden;
+      margin: 8px 0;
+    }
+    
+    .fill {
+      height: 100%;
+      width: 0%;
+      background: #fff;
+      transition: width 0.5s ease;
+    }
+    
+    .center-text {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: #fff;
+    }
+    
+    .countdown {
+      font-size: 0.7rem;
+      margin-top: 4px;
+      opacity: 0.9;
+      color: #fff;
+    }
+  </style>
+</head>
+
+<body>
+  
+  <div class="content">
+    <h1>Tool Dashboard</h1>
+    <p>Select a tool below to open:</p>
+    <div class="button-container">
+      <a href="Portfolio Tracker.html">Portfolio Tracker</a>
+      <a href="Scanner.html">Crypto Scanner</a>
+      
+      <a href="CrytoCal.html">CrytoCal</a>
+      <a href="Percentage Calculators.html">Percentage Calculators</a>
+      <a href="ohlcv.html">OHLCV</a>
+      
+      
+    </div>
+  </div>
+  
+  <!-- Mini collapsed -->
+  <div id="mini">
+    <svg viewBox="0 0 60 60">
+      <circle class="bg-circle" cx="30" cy="30" r="27"></circle>
+      <circle class="progress-circle" id="progressMini" cx="30" cy="30" r="27"></circle>
+    </svg>
+    <div class="circle-text" id="percentMini">—%</div>
+  </div>
+  
+  <!-- Expanded Widget -->
+  <div class="card" id="card">
+    <div class="edit" id="editBtn">✏️</div>
+    <div id="settings">
+      <input type="date" id="birth" placeholder="Birthdate">
+      <input type="number" id="age" value="75" placeholder="Target Age">
+      <button id="save">Save</button>
+    </div>
+    <div id="widget">
+      <div class="bar-container">
+        <div class="fill" id="fill"></div>
+      </div>
+      <div class="center-text" id="percentBar">—% remaining</div>
+      <div class="countdown" id="countdown">—</div>
+      <div class="countdown" id="daysPassed">—</div>
+      <div class="countdown" id="deathDate">—</div>
+    </div>
+  </div>
+  
+  <script>
+    const mini = document.getElementById("mini"),
+      card = document.getElementById("card"),
+      settings = document.getElementById("settings"),
+      widget = document.getElementById("widget"),
+      fill = document.getElementById("fill"),
+      percentBar = document.getElementById("percentBar"),
+      countdown = document.getElementById("countdown"),
+      deathDateEl = document.getElementById("deathDate"),
+      daysPassedEl = document.getElementById("daysPassed"),
+      progressMini = document.getElementById("progressMini"),
+      percentMini = document.getElementById("percentMini"),
+      editBtn = document.getElementById("editBtn"),
+      bInput = document.getElementById("birth"),
+      aInput = document.getElementById("age");
+    
+    let collapsed = true;
+    
+    function update() {
+      if (!bInput.value) return;
+      
+      const birth = new Date(bInput.value),
+        targetAge = parseInt(aInput.value),
+        now = new Date(),
+        end = new Date(bInput.value);
+      
+      end.setFullYear(end.getFullYear() + targetAge);
+      
+      const total = end - birth,
+        lived = now - birth,
+        completed = Math.min(100, (lived / total * 100)),
+        remaining = Math.max(0, (100 - completed).toFixed(1));
+      
+      fill.style.width = completed + "%";
+      percentBar.textContent = remaining + "% remaining";
+      deathDateEl.textContent = "DoD: " + end.toDateString();
+      
+      /* ===========================
+         FULL TIME PASSED (REPLACES DAYS)
+         =========================== */
+      let livedMs = lived;
+      
+      const pYears = Math.floor(livedMs / (365.25 * 24 * 3600 * 1000));
+      livedMs -= pYears * 365.25 * 24 * 3600 * 1000;
+      
+      const pMonths = Math.floor(livedMs / (30 * 24 * 3600 * 1000));
+      livedMs -= pMonths * 30 * 24 * 3600 * 1000;
+      
+      const pDays = Math.floor(livedMs / (24 * 3600 * 1000));
+      livedMs -= pDays * 24 * 3600 * 1000;
+      
+      const pHours = Math.floor(livedMs / (3600 * 1000));
+      livedMs -= pHours * 3600 * 1000;
+      
+      const pMins = Math.floor(livedMs / (60 * 1000));
+      livedMs -= pMins * 60 * 1000;
+      
+      const pSecs = Math.floor(livedMs / 1000);
+      
+      daysPassedEl.textContent =
+        `Passed: ${pYears}y ${pMonths}m ${pDays}d ${pHours}h ${pMins}m ${pSecs}s`;
+      
+      /* =========================== */
+      
+      let diff = end - now;
+      if (diff < 0) diff = 0;
+      
+      const years = Math.floor(diff / (365.25 * 24 * 3600 * 1000));
+      diff -= years * 365.25 * 24 * 3600 * 1000;
+      
+      const months = Math.floor(diff / (30 * 24 * 3600 * 1000));
+      diff -= months * 30 * 24 * 3600 * 1000;
+      
+      const days = Math.floor(diff / (24 * 3600 * 1000));
+      diff -= days * 24 * 3600 * 1000;
+      
+      const hours = Math.floor(diff / (3600 * 1000));
+      diff -= hours * 3600 * 1000;
+      
+      const mins = Math.floor(diff / (60 * 1000));
+      diff -= mins * 60 * 1000;
+      
+      const secs = Math.floor(diff / 1000);
+      
+      countdown.textContent =
+        `Left: ${years}y ${months}m ${days}d ${hours}h ${mins}m ${secs}s`;
+      
+      if (collapsed) {
+        mini.style.display = "flex";
+        const circumference = 2 * Math.PI * 27;
+        progressMini.style.strokeDasharray = circumference;
+        progressMini.style.strokeDashoffset = circumference * (1 - completed / 100);
+        percentMini.textContent = remaining + "%";
+      }
+    }
+    
+    // Load saved
+    if (localStorage.birth && localStorage.age) {
+      bInput.value = localStorage.birth;
+      aInput.value = localStorage.age;
+      settings.style.display = 'none';
+      widget.style.display = 'none';
+      mini.style.display = 'flex';
+      collapsed = true;
+      update();
+      setInterval(update, 1000);
+    }
+    
+    // Save
+    document.getElementById("save").addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (!bInput.value || !aInput.value) return;
+      localStorage.birth = bInput.value;
+      localStorage.age = aInput.value;
+      settings.style.display = 'none';
+      widget.style.display = 'block';
+      mini.style.display = 'none';
+      editBtn.style.display = 'block';
+      collapsed = false;
+      update();
+      setInterval(update, 1000);
+    });
+    
+    // Edit
+    editBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      settings.style.display = 'block';
+      widget.style.display = 'none';
+      mini.style.display = 'none';
+      editBtn.style.display = 'none';
+    });
+    
+    // Toggle collapsed/expanded
+    mini.addEventListener("click", (e) => {
+      e.stopPropagation();
+      mini.style.display = 'none';
+      card.style.display = 'block';
+      settings.style.display = 'none';
+      widget.style.display = 'block';
+      editBtn.style.display = 'block';
+      collapsed = false;
+    });
+    card.addEventListener("click", (e) => {
+      if (settings.style.display === 'block') return;
+      collapsed = !collapsed;
+      if (collapsed) {
+        card.style.display = 'none';
+        mini.style.display = 'flex';
+        editBtn.style.display = 'none';
+      }
+    });
+  </script>
+</body>
+
+</html>

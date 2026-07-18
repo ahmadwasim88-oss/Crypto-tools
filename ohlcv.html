@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pro-Data | Binance Futures Export</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0b0e11;
+    --card: #181a20;
+    --border: #2b2f36;
+    --text: #eaecef;
+    --text-dim: #848e9c;
+    --accent: #fcd535;
+    --accent-hover: #f0b90b;
+    --success: #0ecb81;
+    --error: #f6465d;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { 
+    background-color: var(--bg); 
+    color: var(--text); 
+    font-family: 'Inter', sans-serif; 
+    display: flex; 
+    justify-content: center; 
+    align-items: center; 
+    min-height: 100vh;
+    padding: 20px;
+  }
+
+  .container {
+    width: 100%;
+    max-width: 480px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 32px;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+  }
+
+  .header { margin-bottom: 24px; text-align: center; }
+  .header h1 { font-size: 20px; font-weight: 700; margin-bottom: 8px; letter-spacing: -0.5px; }
+  .header p { font-size: 13px; color: var(--text-dim); }
+
+  .field-label { font-size: 12px; font-weight: 600; color: var(--text-dim); margin-bottom: 8px; display: block; }
+
+  /* Custom Searchable Select */
+  .search-wrapper { position: relative; margin-bottom: 20px; }
+  .search-input {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 16px;
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .search-input:focus { border-color: var(--accent); }
+
+  .dropdown-list {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0; right: 0;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    max-height: 200px;
+    overflow-y: auto;
+    z-index: 100;
+    display: none;
+    box-shadow: 0 10px 20px rgba(0,0,0,0.5);
+  }
+  .dropdown-item {
+    padding: 10px 16px;
+    font-size: 13px;
+    cursor: pointer;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .dropdown-item:hover { background: var(--border); color: var(--accent); }
+
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 24px; }
+
+  select {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    color: var(--text);
+    cursor: pointer;
+    outline: none;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 14px;
+    border-radius: 8px;
+    border: none;
+    font-weight: 700;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: 'Inter', sans-serif;
+  }
+  .btn-primary { background: var(--accent); color: #000; }
+  .btn-primary:hover { background: var(--accent-hover); transform: translateY(-1px); }
+  .btn-primary:disabled { background: var(--border); color: var(--text-dim); cursor: not-allowed; transform: none; }
+  
+  .btn-download { 
+    background: transparent; 
+    border: 1px solid var(--success); 
+    color: var(--success); 
+    margin-top: 12px;
+    display: none;
+  }
+  .btn-download:hover { background: rgba(14, 203, 129, 0.1); }
+
+  /* Status and Progress */
+  .status-box {
+    margin-top: 24px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    display: none;
+  }
+  .progress-container {
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    margin: 15px 0;
+    overflow: hidden;
+  }
+  .progress-bar {
+    height: 100%;
+    background: var(--accent);
+    width: 0%;
+    transition: width 0.3s;
+  }
+  .log { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-dim); line-height: 1.6; }
+  .stat-row { display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 12px; }
+  .stat-val { color: var(--text); font-weight: 600; }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="header">
+    <h1>Data Exporter</h1>
+    <p>Binance Futures · OHLCV Historical CSV</p>
+  </div>
+
+  <div class="search-wrapper">
+    <label class="field-label">TRADING PAIR</label>
+    <input type="text" id="symInput" class="search-input" placeholder="Search (e.g. BTC, SOL...)" autocomplete="off">
+    <div id="dropdown" class="dropdown-list"></div>
+  </div>
+
+  <div class="row">
+    <div>
+      <label class="field-label">TIMEFRAME</label>
+      <select id="tf">
+        <option value="1m">1 minute</option>
+        <option value="5m">5 minutes</option>
+        <option value="15m" selected>15 minutes</option>
+        <option value="1h">1 hour</option>
+        <option value="4h">4 hours</option>
+        <option value="1d">1 day</option>
+      </select>
+    </div>
+    <div>
+      <label class="field-label">HISTORY</label>
+      <select id="range">
+        <option value="30">Last 30 Days</option>
+        <option value="180">Last 6 Months</option>
+        <option value="365">Last 1 Year</option>
+        <option value="730" selected>Last 2 Years</option>
+      </select>
+    </div>
+  </div>
+
+  <button class="btn btn-primary" id="fetchBtn" onclick="fetchData()">START EXTRACTION</button>
+  <button class="btn btn-download" id="dlBtn" onclick="downloadCSV()">DOWNLOAD CSV</button>
+
+  <div id="statusBox" class="status-box">
+    <div class="stat-row">
+      <span id="logText">Initializing...</span>
+      <span id="percentText">0%</span>
+    </div>
+    <div class="progress-container">
+      <div id="progressBar" class="progress-bar"></div>
+    </div>
+    <div id="stats" class="log"></div>
+  </div>
+</div>
+
+<script>
+let allSymbols = [];
+let csvData = '';
+let selectedSymbol = 'BTCUSDT';
+
+// 1. Initialize Symbols and Custom Search
+async function init() {
+  try {
+    const r = await fetch('https://fapi.binance.com/fapi/v1/exchangeInfo');
+    const data = await r.json();
+    allSymbols = data.symbols
+      .filter(s => s.status === 'TRADING')
+      .map(s => s.symbol)
+      .sort();
+    
+    setupSearch();
+  } catch (e) {
+    console.error("Failed to load symbols");
+  }
+}
+
+function setupSearch() {
+  const input = document.getElementById('symInput');
+  const dropdown = document.getElementById('dropdown');
+
+  input.value = selectedSymbol;
+
+  input.addEventListener('focus', () => renderDropdown(input.value));
+  input.addEventListener('input', (e) => renderDropdown(e.target.value));
+  
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.search-wrapper')) dropdown.style.display = 'none';
+  });
+
+  function renderDropdown(filter) {
+    const filtered = allSymbols.filter(s => s.toLowerCase().includes(filter.toLowerCase())).slice(0, 50);
+    dropdown.innerHTML = '';
+    if (filtered.length > 0) {
+      dropdown.style.display = 'block';
+      filtered.forEach(s => {
+        const div = document.createElement('div');
+        div.className = 'dropdown-item';
+        div.textContent = s;
+        div.onclick = () => {
+          input.value = s;
+          selectedSymbol = s;
+          dropdown.style.display = 'none';
+        };
+        dropdown.appendChild(div);
+      });
+    } else {
+      dropdown.style.display = 'none';
+    }
+  }
+}
+
+async function fetchData() {
+  const tf = document.getElementById('tf').value;
+  const rangeDays = parseInt(document.getElementById('range').value);
+  const btn = document.getElementById('fetchBtn');
+  const dlBtn = document.getElementById('dlBtn');
+  const statusBox = document.getElementById('statusBox');
+  const logText = document.getElementById('logText');
+  const statsDiv = document.getElementById('stats');
+  const pBar = document.getElementById('progressBar');
+  const pText = document.getElementById('percentText');
+
+  // Validate
+  if (!allSymbols.includes(selectedSymbol.toUpperCase())) {
+    alert("Please select a valid Binance Futures symbol from the list.");
+    return;
+  }
+
+  // Reset UI
+  btn.disabled = true;
+  btn.textContent = 'EXTRACTING...';
+  dlBtn.style.display = 'none';
+  statusBox.style.display = 'block';
+  statsDiv.innerHTML = '';
+  csvData = '';
+
+  const tfMinutes = { '1m':1, '5m':5, '15m':15, '1h':60, '4h':240, '1d':1440 }[tf];
+  const totalRequired = (rangeDays * 24 * 60) / tfMinutes;
+  const batches = Math.ceil(totalRequired / 1500);
+  
+  let allKlines = [];
+  let endTime = Date.now();
+
+  for (let i = 0; i < batches; i++) {
+    const progress = Math.round(((i + 1) / batches) * 100);
+    logText.textContent = `Batch ${i + 1} of ${batches}`;
+    pBar.style.width = progress + '%';
+    pText.textContent = progress + '%';
+
+    try {
+      const resp = await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${selectedSymbol}&interval=${tf}&limit=1500&endTime=${endTime}`);
+      const data = await resp.json();
+      
+      if (!data.length) break;
+      
+      allKlines.unshift(...data);
+      endTime = data[0][0] - 1;
+
+      // Rate limit protection
+      await new Promise(r => setTimeout(r, 100));
+    } catch (e) {
+      logText.textContent = "Error. Retrying...";
+      i--; 
+      await new Promise(r => setTimeout(r, 1000));
+    }
+  }
+
+  // Finalize
+  logText.textContent = "Finalizing data...";
+  
+  // Remove duplicates and sort
+  const clean = Array.from(new Map(allKlines.map(item => [item[0], item])).values())
+                     .sort((a, b) => a[0] - b[0]);
+
+  const rows = ['timestamp,open,high,low,close,volume'];
+  clean.forEach(c => {
+    const date = new Date(c[0]).toISOString().replace('T', ' ').slice(0, 19);
+    rows.push(`${date},${c[1]},${c[2]},${c[3]},${c[4]},${c[5]}`);
+  });
+
+  csvData = rows.join('\n');
+
+  statsDiv.innerHTML = `
+    <div class="stat-row"><span>Total Candles:</span><span class="stat-val">${clean.length.toLocaleString()}</span></div>
+    <div class="stat-row"><span>Start Date:</span><span class="stat-val">${new Date(clean[0][0]).toLocaleDateString()}</span></div>
+    <div class="stat-row"><span>File Size:</span><span class="stat-val">${(new Blob([csvData]).size / 1024 / 1024).toFixed(2)} MB</span></div>
+  `;
+
+  btn.disabled = false;
+  btn.textContent = 'RE-EXTRACT';
+  dlBtn.style.display = 'block';
+  logText.textContent = "Extraction Complete";
+}
+
+function downloadCSV() {
+  const blob = new Blob([csvData], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${selectedSymbol}_${document.getElementById('tf').value}_data.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+init();
+</script>
+</body>
+</html>

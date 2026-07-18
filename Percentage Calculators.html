@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Percent Pro | Custom Keypad</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #030712;
+  --surface: #111827;
+  --surface-light: #1f2937;
+  --accent: #10b981;
+  --accent-dim: rgba(16, 185, 129, 0.1);
+  --text: #f9fafb;
+  --text-dim: #9ca3af;
+  --pos: #10b981;
+  --neg: #ef4444;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; user-select: none; }
+
+body {
+  font-family: 'Inter', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+header { padding: 16px 20px 8px; border-bottom: 1px solid var(--surface-light); }
+header h1 { font-size: 14px; font-weight: 800; color: var(--accent); letter-spacing: 2px; }
+
+nav {
+  display: flex;
+  background: var(--surface);
+  margin: 12px 16px;
+  padding: 4px;
+  border-radius: 12px;
+  flex-shrink: 0;
+}
+nav button {
+  flex: 1; border: none; background: transparent; color: var(--text-dim);
+  padding: 10px 2px; font-size: 10px; font-weight: 800; border-radius: 8px;
+}
+nav button.active { background: var(--surface-light); color: var(--text); box-shadow: 0 2px 4px rgba(0,0,0,0.3); }
+
+main { flex: 1; overflow-y: auto; padding: 0 16px; display: flex; flex-direction: column; }
+
+.info-box { margin-bottom: 20px; padding: 4px; }
+.info-box h2 { font-size: 18px; font-weight: 700; margin-bottom: 6px; color: var(--text); }
+.info-box p { font-size: 13px; line-height: 1.5; color: var(--text-dim); }
+
+.input-area { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }
+.input-field {
+  background: var(--surface);
+  padding: 14px 18px;
+  border-radius: 16px;
+  border: 2px solid transparent;
+  transition: 0.2s;
+}
+.input-field.active { border-color: var(--accent); background: var(--bg); box-shadow: 0 0 15px var(--accent-dim); }
+
+.field-label { font-size: 10px; font-weight: 800; color: var(--accent); margin-bottom: 4px; display: flex; justify-content: space-between; }
+.field-desc { font-weight: 400; color: var(--text-dim); text-transform: none; }
+.field-value { font-size: 26px; font-weight: 700; min-height: 32px; display: flex; align-items: center; }
+.field-value:empty::after { content: '0'; color: #374151; }
+
+.keypad {
+  background: var(--surface);
+  padding: 10px 10px calc(10px + env(safe-area-inset-bottom));
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  border-radius: 24px 24px 0 0;
+}
+.key {
+  background: var(--surface-light);
+  color: var(--text);
+  border: none;
+  height: 60px;
+  font-size: 20px;
+  font-weight: 600;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.key:active { background: var(--accent); color: var(--bg); }
+.key.action { background: #374151; color: var(--accent); }
+
+.result-hub {
+  background: var(--surface-light);
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--accent-dim);
+}
+.res-info { display: flex; flex-direction: column; }
+.res-label { font-size: 10px; font-weight: 800; color: var(--text-dim); letter-spacing: 1px; }
+.res-val { font-size: 28px; font-weight: 800; transition: color 0.3s; }
+
+/* Confirmation Styles */
+#res-summary {
+  display: block;
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 8px;
+  font-family: monospace;
+  letter-spacing: 0.2px;
+}
+.highlight {
+  color: var(--accent);
+  font-weight: 800;
+  background: var(--accent-dim);
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+
+.pos { color: var(--pos); }
+.neg { color: var(--neg); }
+</style>
+</head>
+<body>
+
+<header><h1>PERCENT PRO</h1></header>
+
+<nav id="nav">
+  <button class="active" onclick="setTool(0)">CHANGE</button>
+  <button onclick="setTool(1)">RECOVERY</button>
+  <button onclick="setTool(2)">ORIGINAL</button>
+  <button onclick="setTool(3)">TOTAL</button>
+</nav>
+
+<main id="workspace"></main>
+
+<div class="result-hub">
+  <div class="res-info">
+    <span class="res-label" id="res-label">RESULT</span>
+    <span class="res-val" id="res-val">0</span>
+    <span id="res-summary"></span>
+  </div>
+</div>
+
+<div class="keypad">
+  <button class="key" onclick="press('1')">1</button>
+  <button class="key" onclick="press('2')">2</button>
+  <button class="key" onclick="press('3')">3</button>
+  <button class="key action" onclick="press('DEL')">⌫</button>
+  
+  <button class="key" onclick="press('4')">4</button>
+  <button class="key" onclick="press('5')">5</button>
+  <button class="key" onclick="press('6')">6</button>
+  <button class="key action" onclick="press('-')">+/-</button>
+  
+  <button class="key" onclick="press('7')">7</button>
+  <button class="key" onclick="press('8')">8</button>
+  <button class="key" onclick="press('9')">9</button>
+  <button class="key action" onclick="press('.')">.</button>
+  
+  <button class="key" style="grid-column: span 4" onclick="press('0')">0</button>
+</div>
+
+<script>
+let currentTool = 0;
+let activeId = '';
+let justSelected = false;
+
+const tools = [
+  {
+    title: 'Percentage Change',
+    desc: 'Measures the relative difference between two numbers.',
+    fields: [{ id: 'a', label: 'Initial Value', desc: 'Start' }, { id: 'b', label: 'Final Value', desc: 'End' }]
+  },
+  {
+    title: 'Recovery Required',
+    desc: 'Gain needed to break even after a percentage loss.',
+    fields: [{ id: 'c', label: 'Loss %', desc: 'The drop' }]
+  },
+  {
+    title: 'Original Value',
+    desc: 'Calculate the starting price before a change.',
+    fields: [{ id: 'd', label: 'Change %', desc: '+ or -' }, { id: 'e', label: 'Final Value', desc: 'Price' }]
+  },
+  {
+    title: 'Total from Part',
+    desc: 'Calculate the 100% total based on a portion.',
+    fields: [{ id: 'f', label: 'Part Amount', desc: 'Value' }, { id: 'g', label: 'Percentage %', desc: 'Weight' }]
+  }
+];
+
+let state = { 0: {a:'', b:''}, 1: {c:''}, 2: {d:'', e:''}, 3: {f:'', g:''} };
+
+function setTool(i) {
+  currentTool = i;
+  activeId = tools[i].fields[0].id;
+  justSelected = true;
+  document.querySelectorAll('nav button').forEach((b, x) => b.classList.toggle('active', x === i));
+  render();
+}
+
+function render() {
+  const container = document.getElementById('workspace');
+  const tool = tools[currentTool];
+  let html = `<div class="info-box"><h2>${tool.title}</h2><p>${tool.desc}</p></div><div class="input-area">`;
+  tool.fields.forEach(f => {
+    html += `
+      <div class="input-field ${activeId === f.id ? 'active' : ''}" onclick="selectField('${f.id}')">
+        <div class="field-label">${f.label} <span class="field-desc">${f.desc}</span></div>
+        <div class="field-value">${state[currentTool][f.id]}</div>
+      </div>`;
+  });
+  html += `</div>`;
+  container.innerHTML = html;
+  calculate();
+}
+
+function selectField(id) { activeId = id; justSelected = true; render(); }
+
+function press(key) {
+  let val = state[currentTool][activeId];
+  if (key === 'DEL') { state[currentTool][activeId] = val.slice(0, -1); justSelected = false; }
+  else if (key === '-') {
+    if (val.startsWith('-')) state[currentTool][activeId] = val.slice(1);
+    else state[currentTool][activeId] = '-' + val;
+  }
+  else if (key === '.') { if (!val.includes('.')) state[currentTool][activeId] += '.'; justSelected = false; }
+  else {
+    if (justSelected) { state[currentTool][activeId] = key; justSelected = false; }
+    else if (val.length < 12) state[currentTool][activeId] += key;
+  }
+  if (navigator.vibrate) navigator.vibrate(5);
+  render();
+}
+
+function calculate() {
+  const n = id => parseFloat(state[currentTool][id]);
+  const highlight = (val) => `<span class="highlight">${val}</span>`;
+  let res = "—", label = "RESULT", cls = "", proof = "";
+
+  if (currentTool === 0) {
+    const a = n('a'), b = n('b');
+    if (!isNaN(a) && !isNaN(b) && a !== 0) {
+      const d = ((b-a)/a)*100;
+      res = (d > 0 ? "+" : "") + d.toFixed(2) + "%";
+      cls = d > 0 ? "pos" : (d < 0 ? "neg" : "");
+      label = "PERCENTAGE CHANGE";
+      proof = `${a} ${d >= 0 ? '+' : '-'} (${a} × ${Math.abs(d).toFixed(2)}%) = ${highlight(b)}`;
+    }
+  } else if (currentTool === 1) {
+    const l = n('c');
+    if (l > 0 && l < 100) {
+      const rec = ((l/(100-l))*100).toFixed(2);
+      res = "+" + rec + "%"; cls = "pos"; label = "GAIN TO RECOVER";
+      proof = `(100 - ${l}%) + ${rec}% = ${highlight('100')}`;
+    }
+  } else if (currentTool === 2) {
+    const p = n('d'), f = n('e');
+    if (!isNaN(p) && !isNaN(f)) {
+      const orig = (f / (1 + p/100));
+      res = orig.toLocaleString(undefined, {maximumFractionDigits:2}); label = "ORIGINAL VALUE";
+      proof = `${orig.toFixed(2)} ${p >= 0 ? '+' : '-'} ${Math.abs(p)}% = ${highlight(f)}`;
+    }
+  } else if (currentTool === 3) {
+    const p = n('f'), pt = n('g');
+    if (p && pt) {
+      const total = (p*100)/pt;
+      res = total.toLocaleString(undefined, {maximumFractionDigits:2}); label = "TOTAL AMOUNT";
+      proof = `${total.toFixed(2)} × ${pt}% = ${highlight(p)}`;
+    }
+  }
+
+  document.getElementById('res-val').textContent = res;
+  document.getElementById('res-val').className = "res-val " + cls;
+  document.getElementById('res-label').textContent = label;
+  document.getElementById('res-summary').innerHTML = proof ? "✓ CONFIRMATION: " + proof : "";
+}
+
+setTool(0);
+</script>
+</body>
+</html>
