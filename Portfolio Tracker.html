@@ -793,7 +793,7 @@ function classifyHolding(md, item, ta, macroTa) {
   const athValue = md.ath;
   const athDate = md.ath_date;
   const atlValue = md.atl;
-  const cur = md.current_price ?? pricesCache[item.id];
+  const cur = pricesCache[item.id] ?? md.current_price;
 
   const noTradingData = (volume == null || mcap == null);
   const zeroMcap = !noTradingData && mcap === 0;
@@ -1497,8 +1497,8 @@ function handleRowExpansion(tr, item, forceReExpand = false) {
 
       <div class="detail-group-title">Liquidity</div>
       <div class="detail-grid">
-        <div class="detail-item"><div class="label">24h Volume</div><div class="value">${ta.volume == null ? '—' : formatINR(ta.volume)}</div></div>
-        <div class="detail-item"><div class="label">Market Cap</div><div class="value">${ta.mcap == null ? '—' : formatINR(ta.mcap)}</div></div>
+        <div class="detail-item"><div class="label">24h Volume</div><div class="value">${ta.volume == null ? '—' : formatINR(ta.volume, 2, true)}</div></div>
+        <div class="detail-item"><div class="label">Market Cap</div><div class="value">${ta.mcap == null ? '—' : formatINR(ta.mcap, 2, true)}</div></div>
         <div class="detail-item"><div class="label">Vol / MCap</div><div class="value">${ta.volMcapRatio == null ? '—' : (ta.volMcapRatio * 100).toFixed(3) + '%'}</div></div>
         <div class="detail-item"><div class="label">MCap Rank</div><div class="value">${ta.rank == null ? '—' : '#' + ta.rank}</div></div>
       </div>
