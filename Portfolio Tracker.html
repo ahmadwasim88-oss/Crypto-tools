@@ -431,6 +431,10 @@ const RANK_CAUTION = 500;
 const DCA_EXTREME_PCT = -85;
 const DCA_DEEP_PCT = -70;
 const DCA_MODERATE_PCT = -40;
+const DCA_DIP_WINDOW_DAYS = 90;
+const DCA_DIP_NEAR_PCT = 3;
+const REL_STRENGTH_WINDOW_DAYS = 14;
+const REL_STRENGTH_BONUS = 5;
 const DCA_WATCH_PCT = -20;
 
 const CRASH_7D_PCT = -15;
@@ -443,9 +447,11 @@ const TA_FETCH_DELAY_MS = 1500;
 const RSI_PERIOD = 14;
 const RSI_OVERSOLD = 30;
 const RSI_OVERBOUGHT = 70;
+const BB_OVEREXTENDED = 0.85;
 
 const EMA_FAST = 12, EMA_SLOW = 26, MACD_SIGNAL = 9;
 const EMA_TREND_SHORT = 50, EMA_TREND_LONG = 200;
+const EMA_TREND_FAST_SHORT = 20, EMA_TREND_FAST_LONG = 50;
 
 const BB_PERIOD = 20, BB_STDDEV = 2;
 
@@ -454,7 +460,7 @@ const SWING_MIN_MOVE_PCT = 0.5;
 const DIVERGENCE_MIN_RSI_DELTA = 3;
 const RETEST_TOLERANCE_PCT = 3;
 const RETEST_INVALIDATE_PCT = 2;
-const TA_LOGIC_VERSION = 4;
+const TA_LOGIC_VERSION = 7;
 const TA_FETCH_VERSION = 2;
 
 let saved             = JSON.parse(localStorage.getItem('shortfall_portfolio') || '[]');
@@ -657,17 +663,43 @@ function calcBollingerPercentB(values, period, stddevMult) {
   return (last - lower) / (upper - lower);
 }
 
+function calcReturnPct(closes, days) {
+  if (!closes || closes.length < days + 1) return null;
+  const start = closes[closes.length - 1 - days];
+  const end = closes[closes.length - 1];
+  if (start == null || end == null || start === 0) return null;
+  return (end - start) / start * 100;
+}
+
+function isOverextended(ta) {
+  if (!ta) return { extended: false, note: null };
+  const rsiHot = ta.rsi != null && ta.rsi >= RSI_OVERBOUGHT;
+  const bbHot = ta.bbPercentB != null && ta.bbPercentB >= BB_OVEREXTENDED;
+  if (rsiHot && bbHot) return { extended: true, note: `RSI overbought (${ta.rsi.toFixed(0)}) and price pinned near the upper Bollinger band (%B ${ta.bbPercentB.toFixed(2)})` };
+  if (rsiHot) return { extended: true, note: `RSI overbought (${ta.rsi.toFixed(0)})` };
+  if (bbHot) return { extended: true, note: `price pinned near the upper Bollinger band (%B ${ta.bbPercentB.toFixed(2)})` };
+  return { extended: false, note: null };
+}
+
 function computeTaFromCloses(closes) {
   if (!closes || closes.length < RSI_PERIOD + 1) return null;
   const emaShortSeries = calcEMASeries(closes, EMA_TREND_SHORT);
   const emaLongSeries = calcEMASeries(closes, EMA_TREND_LONG);
+  const emaFastShortSeries = calcEMASeries(closes, EMA_TREND_FAST_SHORT);
+  const emaFastLongSeries = calcEMASeries(closes, EMA_TREND_FAST_LONG);
   const rsiSeries = calcRSISeries(closes, RSI_PERIOD);
+  const dipWindowCloses = closes.slice(-DCA_DIP_WINDOW_DAYS);
+  const rollingLow = dipWindowCloses.length ? Math.min(...dipWindowCloses) : null;
   return {
     rsi: rsiSeries.length ? rsiSeries[rsiSeries.length - 1] : null,
     macd: calcMACD(closes),
     bbPercentB: calcBollingerPercentB(closes, BB_PERIOD, BB_STDDEV),
     emaShort: emaShortSeries.length ? emaShortSeries[emaShortSeries.length - 1] : null,
     emaLong: emaLongSeries.length ? emaLongSeries[emaLongSeries.length - 1] : null,
+    emaFastShort: emaFastShortSeries.length ? emaFastShortSeries[emaFastShortSeries.length - 1] : null,
+    emaFastLong: emaFastLongSeries.length ? emaFastLongSeries[emaFastLongSeries.length - 1] : null,
+    rollingLow,
+    rollingLowWindowDays: dipWindowCloses.length,
     structureBreak: detectStructureBreak(closes),
     divergence: detectBullishDivergence(closes, rsiSeries),
     closes,
@@ -810,121 +842,123 @@ function classifyHolding(md, item, ta, macroTa) {
     signal = 'EXIT'; colorKey = 'sell';
     strength = (noTradingData || zeroMcap) ? 90 : Math.max(60, Math.min(95, Math.round(100 - ((volMcapRatio ?? 0) / LIQUIDITY_DEAD_RATIO) * 40)));
     reason = noTradingData
-      ? `CoinGecko currently has no volume or market-cap data for this coin — usually a sign trading has effectively stopped. This isn't a price call, it's a liquidity call. Worth verifying manually whether it's still listed anywhere before deciding anything.`
+      ? `No volume or market-cap data from CoinGecko — usually means trading has effectively stopped. A liquidity call, not a price call. Verify manually before assuming anything about this position.`
       : zeroMcap
-      ? `CoinGecko is reporting a market cap of ₹0 for this coin — a real reported zero, not just missing data. That's usually a sign of a defunct or delisted project (or a token that's been superseded/migrated), regardless of what the ATH-distance number below suggests. Worth verifying manually whether this is still a live, tradeable asset.`
+      ? `CoinGecko reports a real ₹0 market cap — typically a defunct, delisted, or migrated token, regardless of the ATH-distance number. Verify manually.`
       : negligibleVolume
-      ? `Daily trading volume is only ${formatINR(volume)} against a ${formatINR(mcap)} market cap — negligible in absolute terms, even though the ratio alone doesn't clear the "dead" threshold. There's effectively no real market to sell into here.`
-      : `Daily trading volume is only ${(volMcapRatio * 100).toFixed(3)}% of market cap — liquidity has essentially dried up. This has nothing to do with the price being down: there may simply be no real market left to benefit from even if it eventually recovers. Worth asking whether the capital has better use elsewhere.`;
+      ? `Volume (${formatINR(volume)}) is negligible in absolute terms against a ${formatINR(mcap)} market cap, even though the ratio alone doesn't clear the dead threshold. No real market to sell into.`
+      : `Volume/market-cap ratio (${(volMcapRatio * 100).toFixed(2)}%) has dried up. Unrelated to price — there may be no real market left here even if it recovers.`;
   } else if (atRisk) {
     signal = 'AT RISK'; colorKey = 'trim';
     strength = 50;
-    reason = `Market cap is ${formatINR(mcap)}${rank ? ` (rank #${rank})` : ' (unranked)'} — solidly micro-cap, with real survival risk. Not dead yet, so not an exit call — but worth watching liquidity closely rather than adding more here.`;
+    reason = `Micro-cap (${formatINR(mcap)}${rank ? `, rank #${rank}` : ', unranked'}) with real survival risk. Not dead, so not an exit call — but not a place to add either.`;
   } else if (athPct != null) {
     const depth = Math.abs(athPct);
     if (athPct <= DCA_EXTREME_PCT) {
       signal = 'WAIT'; colorKey = 'hold';
       strength = 20;
-      reason = `Trading ${depth.toFixed(0)}% below its all-time high, with healthy liquidity — statistically cheap, but this deep a drawdown has no guaranteed floor and could fall sharply further. Depth of discount by itself is not a buy signal, only evidence of cheapness — checking below for actual reversal confirmation before this becomes an add.`;
+      reason = `Extreme discount — statistically cheap, but depth alone isn't a floor and isn't a buy signal. Checking for reversal confirmation below.`;
     } else if (athPct <= DCA_DEEP_PCT) {
       signal = 'WAIT'; colorKey = 'hold';
       strength = 30;
-      reason = `Trading ${depth.toFixed(0)}% below its all-time high, with healthy liquidity — a deep discount and classic DCA territory by history, assuming you still believe in the project. But discount alone doesn't confirm the fall has stopped — checking below for reversal confirmation before treating this as an add.`;
+      reason = `Deep discount, classic DCA territory by history — but discount alone doesn't confirm the fall has stopped. Checking for reversal confirmation below.`;
     } else if (athPct <= DCA_MODERATE_PCT) {
       signal = 'WAIT'; colorKey = 'hold';
       strength = 25;
-      reason = `Trading ${depth.toFixed(0)}% below its all-time high, with healthy liquidity — a meaningful discount, but not yet a confirmed add. Checking below for reversal confirmation.`;
+      reason = `Meaningful discount, but not yet a confirmed add. Checking for reversal confirmation below.`;
     } else if (athPct <= DCA_WATCH_PCT) {
       signal = 'HOLD'; colorKey = 'hold';
       strength = 35;
-      reason = `Only ${depth.toFixed(0)}% below its all-time high — liquidity looks fine, but this isn't a deep enough discount to call it a DCA opportunity yet.`;
+      reason = `Not a deep enough discount yet to call this a DCA opportunity.`;
     } else {
       signal = 'TRIM'; colorKey = 'trim';
       strength = 55;
-      reason = `Within ${depth.toFixed(0)}% of its all-time high — if you're ever looking to take some profit on this position, this is closer to that zone than a buying one.`;
+      reason = `Close to its all-time high — closer to a profit-taking zone than a buying one.`;
     }
   } else {
     signal = 'HOLD'; colorKey = 'hold';
     strength = 25;
-    reason = `Liquidity looks fine, but there's no all-time-high data available yet to judge whether this is a discount.`;
+    reason = `No all-time-high data yet to judge whether this is a discount.`;
   }
 
   const isDiscountCandidate = signal === 'WAIT' && athPct != null && athPct <= DCA_MODERATE_PCT;
-  if (isDiscountCandidate) {
+  const isZombieTier = athPct != null && athPct <= DCA_DEEP_PCT;
+  if (isDiscountCandidate && isZombieTier) {
+    if (ta && ta.rollingLow != null && cur != null) {
+      const aboveLow = (cur - ta.rollingLow) / ta.rollingLow * 100;
+      const nearLow = aboveLow <= DCA_DIP_NEAR_PCT;
+      const rsiOversold = ta.rsi != null && ta.rsi <= RSI_OVERSOLD;
+      const atLow = nearLow && rsiOversold;
+      if (atLow) {
+        signal = 'ACCUMULATE'; colorKey = 'dca';
+        strength = Math.min(60, strength + 30);
+        reason = `Dormant deep enough that a classic reversal call isn't realistic — this flags adds only when price is near its ${ta.rollingLowWindowDays}-day low with RSI also oversold, and both are true right now. Not a reversal prediction, just an efficient entry.`;
+      } else if (nearLow && !rsiOversold) {
+        reason = `Near its ${ta.rollingLowWindowDays}-day low, but RSI isn't oversold yet — this flag needs both together to avoid firing on every minor dip.`;
+      } else {
+        reason = `Dormant deep enough that a classic reversal call isn't realistic — this only flags an add when price is near its ${ta.rollingLowWindowDays}-day low with RSI also oversold. Currently ${aboveLow.toFixed(1)}% above that low — not there yet.`;
+      }
+    } else {
+      reason = `Not enough price history loaded yet to judge proximity to its recent-range low.`;
+    }
+  } else if (isDiscountCandidate) {
     const structureConfirmed = ta?.structureBreak?.confirmed;
     const divergenceConfirmed = ta?.divergence?.confirmed;
-    const macroBullish = (macroTa?.emaShort != null && macroTa?.emaLong != null) ? macroTa.emaShort > macroTa.emaLong : null;
-    const macroBlocks = macroBullish === false;
-    const macroCaveat = ` The broader market (BTC 50/200-day EMA) is still in a downtrend though, and backtesting showed confirmed reversals fired during a market decline tend to underperform — staying at WAIT until the macro backdrop turns supportive too.`;
+    const coinReturn = calcReturnPct(ta?.closes, REL_STRENGTH_WINDOW_DAYS);
+    const btcReturn = calcReturnPct(macroTa?.closes, REL_STRENGTH_WINDOW_DAYS);
+    const relStrength = (coinReturn != null && btcReturn != null) ? (coinReturn - btcReturn) : null;
+    const relStrengthBonus = relStrength == null ? 0 : (relStrength > 0 ? REL_STRENGTH_BONUS : -REL_STRENGTH_BONUS);
+    const relStrengthNote = relStrength == null
+      ? ''
+      : relStrength > 0
+      ? ` Also outperforming BTC — capital may already be rotating in.`
+      : ` Underperforming BTC though, so weight this slightly lighter.`;
 
     if (structureConfirmed) {
-      if (macroBlocks) {
-        strength = Math.max(strength, 35);
-        reason += ` This coin's own price structure confirms a reversal — a higher low formed, price broke back above the prior swing high (${formatINR(ta.structureBreak.swingHigh, 4)}), retested it, and held.${macroCaveat}`;
-      } else {
-        signal = 'ACCUMULATE'; colorKey = 'dca';
-        strength = Math.min(90, strength + 60);
-        reason += ` Technicals confirm this with actual price structure: a higher low formed, price broke back above the prior swing high (${formatINR(ta.structureBreak.swingHigh, 4)}), retested it, and held — structural evidence of a reversal, not just a breakout that could still fail.`;
-      }
+      signal = 'ACCUMULATE'; colorKey = 'dca';
+      strength = Math.min(90, strength + 60 + relStrengthBonus);
+      reason = `Reversal confirmed by price structure: higher low formed, reclaimed the prior swing high, retested it, and held. The strongest confirmation this tool has.${relStrengthNote}`;
     } else if (divergenceConfirmed) {
-      if (macroBlocks) {
-        strength = Math.max(strength, 30);
-        reason += ` This coin shows bullish divergence — price made a lower low but RSI made a higher low (${ta.divergence.rsiPrev.toFixed(1)} → ${ta.divergence.rsiLast.toFixed(1)}), selling momentum fading before price itself turned.${macroCaveat}`;
-      } else {
-        signal = 'ACCUMULATE'; colorKey = 'dca';
-        strength = Math.min(80, strength + 50);
-        reason += ` Technicals confirm this via bullish divergence: price made a lower low but RSI made a higher low (${ta.divergence.rsiPrev.toFixed(1)} → ${ta.divergence.rsiLast.toFixed(1)}) — selling momentum is fading even before price itself has turned, typically a leading signal ahead of a structural reversal.`;
-      }
+      signal = 'ACCUMULATE'; colorKey = 'dca';
+      strength = Math.min(80, strength + 50 + relStrengthBonus);
+      reason = `Reversal confirmed by bullish divergence: price made a lower low while RSI didn't — selling pressure fading before price itself turned, typically a leading signal.${relStrengthNote}`;
     } else if (ta && ta.rsi != null && ta.macd) {
       const rsi = ta.rsi;
       const macdBullish = ta.macd.hist > 0;
       const freshCross = ta.macd.prevHist != null && ta.macd.prevHist <= 0 && ta.macd.hist > 0;
       const oversold = rsi <= RSI_OVERSOLD;
-      const overbought = rsi >= RSI_OVERBOUGHT;
-      const trendBullish = (ta.emaShort != null && ta.emaLong != null) ? ta.emaShort > ta.emaLong : null;
+      const extension = isOverextended(ta);
+      const trendBullish = (ta.emaFastShort != null && ta.emaFastLong != null) ? ta.emaFastShort > ta.emaFastLong : null;
 
-      let taNote = `RSI ${rsi.toFixed(0)}`;
-      taNote += freshCross ? ', MACD just crossed bullish' : macdBullish ? ', MACD histogram positive' : ', MACD still bearish';
-
-      if (overbought) {
-        reason += ` Technicals are mixed here though: ${taNote} — RSI is overbought short-term even though price is far below its ATH, and there's no structure break or divergence to back it up. Staying at WAIT.`;
+      if (extension.extended) {
+        reason = `Already stretched (${extension.note}) with no structure break or divergence to back an add here — staying at WAIT rather than chasing it.`;
       } else if (macdBullish && (oversold || trendBullish)) {
-        if (macroBlocks) {
-          strength = Math.max(strength, 30);
-          reason += ` Technicals lean supportive on their own: ${taNote}.${macroCaveat}`;
-        } else {
-          signal = 'ACCUMULATE'; colorKey = 'dca';
-          strength = oversold ? Math.min(65, strength + 35) : Math.min(55, strength + 25);
-          reason += ` Technicals lean supportive: ${taNote}${trendBullish ? ', and the 50/200-day EMA trend is already constructive' : ''}. No structure break or divergence has fired yet though, so this is the more lagging form of confirmation — worth smaller size than a structure-confirmed add.`;
-        }
+        signal = 'ACCUMULATE'; colorKey = 'dca';
+        strength = (oversold ? Math.min(65, strength + 35) : Math.min(55, strength + 25)) + relStrengthBonus;
+        reason = `Momentum-only confirmation: MACD bullish${freshCross ? ' (fresh cross)' : ''}, ${oversold ? 'RSI oversold' : 'fast EMA trend already turning'} — no structure break or divergence yet, so this is the weakest confirmation tier here, worth smaller size.${relStrengthNote}`;
       } else if (macdBullish) {
         strength = Math.max(strength, 25);
-        reason += ` Technicals are only partly supportive: ${taNote}, without oversold origin, trend backing, structure break, or divergence. Too early to call this confirmed.`;
+        reason = `MACD is turning bullish, but without oversold RSI, trend backing, structure break, or divergence — too early to call this confirmed.`;
       } else {
-        reason += ` Technicals don't confirm a turn yet: ${taNote}, and no structure break or divergence either. Cheap isn't the same as stabilized — staying at WAIT.`;
+        reason = `No confirmation yet — MACD still bearish, no structure break or divergence. Cheap isn't the same as stabilized.`;
       }
     } else {
       const chg7d = md.change_7d;
       const chg30d = md.change_30d;
       if (chg7d == null) {
-        reason += ` (No recent price-trend data available to confirm a reversal — staying at WAIT. TA history not loaded yet for a fuller read.)`;
+        reason = `No TA history or recent price-trend data yet to assess a reversal — will reassess once data loads.`;
       } else if (chg7d <= CRASH_7D_PCT) {
-        reason += ` It's also down ${Math.abs(chg7d).toFixed(1)}% in just the past 7 days, meaning it's still actively falling right now — clearly not confirmed. Staying at WAIT.`;
+        reason = `Still falling sharply (${chg7d.toFixed(1)}% over 7 days) — clearly not confirmed.`;
       } else {
         const chg30dWeekly = chg30d != null ? chg30d * (7 / 30) : null;
         const isDecelerating = chg30dWeekly != null && chg7d > chg30dWeekly + DECEL_BUFFER;
         const isFlatOrUp = chg7d >= -5;
         if (isFlatOrUp || isDecelerating) {
-          if (macroBlocks) {
-            strength = Math.max(strength, 25);
-            reason += ` Recent price action (${chg7d >= 0 ? '+' : ''}${chg7d.toFixed(1)}% over 7 days) isn't showing signs of continued sharp decline.${macroCaveat} (TA history not loaded yet for a fuller read.)`;
-          } else {
-            signal = 'ACCUMULATE'; colorKey = 'dca';
-            strength = Math.min(50, strength + 20);
-            reason += ` Recent price action (${chg7d >= 0 ? '+' : ''}${chg7d.toFixed(1)}% over 7 days) isn't showing signs of continued sharp decline, which is tentative support for this being a DCA candidate rather than a falling knife — but this is the fallback heuristic, not real TA confirmation, so treat it as lower-conviction than a structure- or divergence-confirmed signal. (TA history not loaded yet for a fuller read.)`;
-          }
+          signal = 'ACCUMULATE'; colorKey = 'dca';
+          strength = Math.min(50, strength + 20) + relStrengthBonus;
+          reason = `No TA history loaded yet, but 7-day price action (${chg7d >= 0 ? '+' : ''}${chg7d.toFixed(1)}%) isn't showing further sharp decline — a tentative, low-conviction fallback signal only, not real TA confirmation.`;
         } else {
-          reason += ` Recent price action (${chg7d.toFixed(1)}% over 7 days) doesn't yet clearly show the decline slowing down — staying at WAIT rather than calling this confirmed. (TA history not loaded yet for a fuller read.)`;
+          reason = `No TA history loaded yet, and recent price action (${chg7d.toFixed(1)}% over 7 days) doesn't show the decline slowing — staying at WAIT.`;
         }
       }
     }
@@ -945,11 +979,16 @@ function classifyHolding(md, item, ta, macroTa) {
     rsi: ta?.rsi ?? null,
     macdHist: ta?.macd?.hist ?? null,
     emaLong: ta?.emaLong ?? null,
+    rollingLow: ta?.rollingLow ?? null,
+    rollingLowWindowDays: ta?.rollingLowWindowDays ?? null,
     cmp: cur ?? null,
-    emaTrendBullish: (ta?.emaShort != null && ta?.emaLong != null) ? (ta.emaShort > ta.emaLong) : null,
+    emaTrendBullish: (ta?.emaFastShort != null && ta?.emaFastLong != null) ? (ta.emaFastShort > ta.emaFastLong) : null,
     bbPercentB: ta?.bbPercentB ?? null,
     structureConfirmed: ta?.structureBreak?.confirmed ?? null,
     macroBullish: (macroTa?.emaShort != null && macroTa?.emaLong != null) ? macroTa.emaShort > macroTa.emaLong : null,
+    relStrengthVsBtc: (calcReturnPct(ta?.closes, REL_STRENGTH_WINDOW_DAYS) != null && calcReturnPct(macroTa?.closes, REL_STRENGTH_WINDOW_DAYS) != null)
+      ? calcReturnPct(ta?.closes, REL_STRENGTH_WINDOW_DAYS) - calcReturnPct(macroTa?.closes, REL_STRENGTH_WINDOW_DAYS)
+      : null,
     divergenceConfirmed: ta?.divergence?.confirmed ?? null,
     taStale: !ta
   };
@@ -1508,12 +1547,13 @@ function handleRowExpansion(tr, item, forceReExpand = false) {
         <div class="detail-item"><div class="label">Conviction</div><div class="value">${ta.strength}%</div></div>
         <div class="detail-item"><div class="label">RSI (14)</div><div class="value ${ta.rsi != null && ta.rsi <= RSI_OVERSOLD ? 'buy' : ta.rsi != null && ta.rsi >= RSI_OVERBOUGHT ? 'sell' : ''}">${ta.rsi == null ? '—' : ta.rsi.toFixed(0)}</div></div>
         <div class="detail-item"><div class="label">MACD Hist</div><div class="value ${ta.macdHist != null ? (ta.macdHist > 0 ? 'buy' : 'sell') : ''}">${ta.macdHist == null ? '—' : ta.macdHist.toFixed(4)}</div></div>
-        <div class="detail-item"><div class="label">Trend (50/200 EMA)</div><div class="value ${ta.emaTrendBullish == null ? '' : ta.emaTrendBullish ? 'buy' : 'sell'}">${ta.emaTrendBullish == null ? '—' : ta.emaTrendBullish ? 'Bullish' : 'Bearish'}</div></div>
+        <div class="detail-item"><div class="label">Trend (20/50 EMA)</div><div class="value ${ta.emaTrendBullish == null ? '' : ta.emaTrendBullish ? 'buy' : 'sell'}">${ta.emaTrendBullish == null ? '—' : ta.emaTrendBullish ? 'Bullish' : 'Bearish'}</div></div>
         <div class="detail-item"><div class="label">CMP → EMA 200</div><div class="value target-pct">${(ta.emaLong == null || ta.cmp == null) ? '—' : (((ta.emaLong - ta.cmp) / ta.cmp * 100) >= 0 ? '+' : '') + ((ta.emaLong - ta.cmp) / ta.cmp * 100).toFixed(1) + '% (' + formatINR(ta.emaLong, 4) + ')'}</div></div>
+        <div class="detail-item"><div class="label">${ta.rollingLowWindowDays || DCA_DIP_WINDOW_DAYS}-Day Low</div><div class="value">${(ta.rollingLow == null || ta.cmp == null) ? '—' : formatINR(ta.rollingLow, 4) + ' (+' + ((ta.cmp - ta.rollingLow) / ta.rollingLow * 100).toFixed(1) + '% above)'}</div></div>
         <div class="detail-item"><div class="label">Bollinger %B</div><div class="value">${ta.bbPercentB == null ? '—' : ta.bbPercentB.toFixed(2)}</div></div>
         <div class="detail-item"><div class="label">Structure Break</div><div class="value ${ta.structureConfirmed ? 'buy' : ''}">${ta.structureConfirmed == null ? '—' : ta.structureConfirmed ? 'Confirmed' : 'No'}</div></div>
         <div class="detail-item"><div class="label">Bullish Divergence</div><div class="value ${ta.divergenceConfirmed ? 'buy' : ''}">${ta.divergenceConfirmed == null ? '—' : ta.divergenceConfirmed ? 'Confirmed' : 'No'}</div></div>
-        <div class="detail-item"><div class="label">Macro Trend (BTC)</div><div class="value ${ta.macroBullish ? 'buy' : ta.macroBullish === false ? 'sell' : ''}">${ta.macroBullish == null ? '—' : ta.macroBullish ? 'Bullish' : 'Bearish'}</div></div>
+        <div class="detail-item"><div class="label">Rel. Strength (${REL_STRENGTH_WINDOW_DAYS}d vs BTC)</div><div class="value ${ta.relStrengthVsBtc > 0 ? 'buy' : ta.relStrengthVsBtc < 0 ? 'sell' : ''}">${ta.relStrengthVsBtc == null ? '—' : (ta.relStrengthVsBtc >= 0 ? '+' : '') + ta.relStrengthVsBtc.toFixed(1) + 'pp'}</div></div>
       </div>
       ${ta.taStale ? '<div class="detail-reason" style="color:var(--muted-2)">TA history for this coin hasn\'t loaded yet — signal is using the fallback momentum check for now.</div>' : ''}
       <div class="detail-reason"><b>Why:</b> ${ta.reason}</div>
