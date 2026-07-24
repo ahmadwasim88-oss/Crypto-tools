@@ -455,12 +455,12 @@ const EMA_TREND_FAST_SHORT = 20, EMA_TREND_FAST_LONG = 50;
 
 const BB_PERIOD = 20, BB_STDDEV = 2;
 
-const SWING_LOOKBACK = 3;
-const SWING_MIN_MOVE_PCT = 0.5;
+const SWING_LOOKBACK = 7;
+const SWING_MIN_MOVE_PCT = 5;
 const DIVERGENCE_MIN_RSI_DELTA = 3;
 const RETEST_TOLERANCE_PCT = 3;
 const RETEST_INVALIDATE_PCT = 2;
-const TA_LOGIC_VERSION = 7;
+const TA_LOGIC_VERSION = 9;
 const TA_FETCH_VERSION = 2;
 
 let saved             = JSON.parse(localStorage.getItem('shortfall_portfolio') || '[]');
@@ -916,8 +916,8 @@ function classifyHolding(md, item, ta, macroTa) {
 
     if (structureConfirmed) {
       signal = 'ACCUMULATE'; colorKey = 'dca';
-      strength = Math.min(90, strength + 60 + relStrengthBonus);
-      reason = `Reversal confirmed by price structure: higher low formed, reclaimed the prior swing high, retested it, and held. The strongest confirmation this tool has.${relStrengthNote}`;
+      strength = Math.min(65, strength + 35 + relStrengthBonus);
+      reason = `Reversal confirmed by price structure: higher low formed, reclaimed the prior swing high (${formatINR(ta.structureBreak.swingHigh, 4)}), retested it, and held. Backtesting didn't show this reliably beating a random entry though, so it's scored as directionally meaningful, not as top-tier conviction.${relStrengthNote}`;
     } else if (divergenceConfirmed) {
       signal = 'ACCUMULATE'; colorKey = 'dca';
       strength = Math.min(80, strength + 50 + relStrengthBonus);
@@ -990,7 +990,8 @@ function classifyHolding(md, item, ta, macroTa) {
       ? calcReturnPct(ta?.closes, REL_STRENGTH_WINDOW_DAYS) - calcReturnPct(macroTa?.closes, REL_STRENGTH_WINDOW_DAYS)
       : null,
     divergenceConfirmed: ta?.divergence?.confirmed ?? null,
-    taStale: !ta
+    taStale: !ta,
+    taTimestamp: ta?.timestamp ?? null,
   };
 }
 
@@ -1542,14 +1543,14 @@ function handleRowExpansion(tr, item, forceReExpand = false) {
         <div class="detail-item"><div class="label">MCap Rank</div><div class="value">${ta.rank == null ? '—' : '#' + ta.rank}</div></div>
       </div>
 
-      <div class="detail-group-title">Technical Confirmation</div>
+      <div class="detail-group-title">Technical Confirmation${ta.taTimestamp == null ? '' : (() => { const ageHrs = (Date.now() - ta.taTimestamp) / 3600000; const stale = ageHrs >= 24; return ` <span style="font-weight:400;color:${stale ? 'var(--sell)' : 'var(--muted-2)'}">· TA as of ${ageHrs < 1 ? '<1h ago' : ageHrs < 48 ? Math.round(ageHrs) + 'h ago' : Math.round(ageHrs / 24) + 'd ago'}${stale ? ' (stale — refresh may be failing)' : ''}</span>`; })()}</div>
       <div class="detail-grid">
         <div class="detail-item"><div class="label">Conviction</div><div class="value">${ta.strength}%</div></div>
         <div class="detail-item"><div class="label">RSI (14)</div><div class="value ${ta.rsi != null && ta.rsi <= RSI_OVERSOLD ? 'buy' : ta.rsi != null && ta.rsi >= RSI_OVERBOUGHT ? 'sell' : ''}">${ta.rsi == null ? '—' : ta.rsi.toFixed(0)}</div></div>
         <div class="detail-item"><div class="label">MACD Hist</div><div class="value ${ta.macdHist != null ? (ta.macdHist > 0 ? 'buy' : 'sell') : ''}">${ta.macdHist == null ? '—' : ta.macdHist.toFixed(4)}</div></div>
         <div class="detail-item"><div class="label">Trend (20/50 EMA)</div><div class="value ${ta.emaTrendBullish == null ? '' : ta.emaTrendBullish ? 'buy' : 'sell'}">${ta.emaTrendBullish == null ? '—' : ta.emaTrendBullish ? 'Bullish' : 'Bearish'}</div></div>
         <div class="detail-item"><div class="label">CMP → EMA 200</div><div class="value target-pct">${(ta.emaLong == null || ta.cmp == null) ? '—' : (((ta.emaLong - ta.cmp) / ta.cmp * 100) >= 0 ? '+' : '') + ((ta.emaLong - ta.cmp) / ta.cmp * 100).toFixed(1) + '% (' + formatINR(ta.emaLong, 4) + ')'}</div></div>
-        <div class="detail-item"><div class="label">${ta.rollingLowWindowDays || DCA_DIP_WINDOW_DAYS}-Day Low</div><div class="value">${(ta.rollingLow == null || ta.cmp == null) ? '—' : formatINR(ta.rollingLow, 4) + ' (+' + ((ta.cmp - ta.rollingLow) / ta.rollingLow * 100).toFixed(1) + '% above)'}</div></div>
+        <div class="detail-item"><div class="label">${ta.rollingLowWindowDays || DCA_DIP_WINDOW_DAYS}-Day Low</div><div class="value">${(ta.rollingLow == null || ta.cmp == null) ? '—' : formatINR(ta.rollingLow, 4) + ' (' + (((ta.cmp - ta.rollingLow) / ta.rollingLow * 100) >= 0 ? '+' : '') + ((ta.cmp - ta.rollingLow) / ta.rollingLow * 100).toFixed(1) + '% above)'}</div></div>
         <div class="detail-item"><div class="label">Bollinger %B</div><div class="value">${ta.bbPercentB == null ? '—' : ta.bbPercentB.toFixed(2)}</div></div>
         <div class="detail-item"><div class="label">Structure Break</div><div class="value ${ta.structureConfirmed ? 'buy' : ''}">${ta.structureConfirmed == null ? '—' : ta.structureConfirmed ? 'Confirmed' : 'No'}</div></div>
         <div class="detail-item"><div class="label">Bullish Divergence</div><div class="value ${ta.divergenceConfirmed ? 'buy' : ''}">${ta.divergenceConfirmed == null ? '—' : ta.divergenceConfirmed ? 'Confirmed' : 'No'}</div></div>
