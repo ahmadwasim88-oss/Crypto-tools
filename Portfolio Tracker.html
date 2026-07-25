@@ -410,7 +410,6 @@ const priceSortArrow  = document.getElementById('priceSortArrow');
 
 const API_KEY = 'CG-G1MtEv33nwCgRyvF4YNsKyDs';
 const API_BASE = 'https://api.coingecko.com/api/v3';
-const BINANCE_API_BASE = 'https://api.binance.com/api/v3';
 
 const PRICE_REFRESH_INTERVAL = 2 * 60000;
 const API_RECHECK_INTERVAL   = 0.5 * 60000;
@@ -434,11 +433,13 @@ const DCA_MODERATE_PCT = -40;
 const DCA_DIP_WINDOW_DAYS = 90;
 const DCA_DIP_NEAR_PCT = 3;
 const REL_STRENGTH_WINDOW_DAYS = 14;
-const REL_STRENGTH_BONUS = 5;
+const EMA_TREND_FAST_SHORT = 20, EMA_TREND_FAST_LONG = 50;
+const REL_STRENGTH_SCALE = 3;
+const REL_STRENGTH_MIN_BONUS = -10;
+const REL_STRENGTH_MAX_BONUS = 8;
 const DCA_WATCH_PCT = -20;
 
 const CRASH_7D_PCT = -15;
-const DECEL_BUFFER = 1;
 
 const TA_REFRESH_INTERVAL = 4 * 60 * 60000;
 const TA_HISTORY_DAYS = 365;
@@ -446,27 +447,17 @@ const TA_FETCH_DELAY_MS = 1500;
 
 const RSI_PERIOD = 14;
 const RSI_OVERSOLD = 30;
-const RSI_OVERBOUGHT = 70;
-const BB_OVEREXTENDED = 0.85;
 
-const EMA_FAST = 12, EMA_SLOW = 26, MACD_SIGNAL = 9;
-const EMA_TREND_SHORT = 50, EMA_TREND_LONG = 200;
-const EMA_TREND_FAST_SHORT = 20, EMA_TREND_FAST_LONG = 50;
+const EMA_TREND_LONG = 200;
 
-const BB_PERIOD = 20, BB_STDDEV = 2;
-
-const SWING_LOOKBACK = 7;
-const SWING_MIN_MOVE_PCT = 5;
-const DIVERGENCE_MIN_RSI_DELTA = 3;
-const RETEST_TOLERANCE_PCT = 3;
-const RETEST_INVALIDATE_PCT = 2;
-const TA_LOGIC_VERSION = 9;
+const TA_LOGIC_VERSION = 10;
 const TA_FETCH_VERSION = 2;
 
 let saved             = JSON.parse(localStorage.getItem('shortfall_portfolio') || '[]');
 let pricesCache       = JSON.parse(localStorage.getItem('shortfall_prices') || '{}');
 let marketDataCache   = JSON.parse(localStorage.getItem('shortfall_market_data') || '{}');
 let holdingSignalCache = JSON.parse(localStorage.getItem('shortfall_holding_signals') || '{}');
+let dcaStreakCache = JSON.parse(localStorage.getItem('shortfall_dca_streaks') || '{}');
 let taCache            = JSON.parse(localStorage.getItem('shortfall_ta_data') || '{}');
 
 let coinList = [];
@@ -509,6 +500,7 @@ const save                 = () => localStorage.setItem('shortfall_portfolio', J
 const savePrices           = () => localStorage.setItem('shortfall_prices', JSON.stringify(pricesCache));
 const saveMarketData       = () => localStorage.setItem('shortfall_market_data', JSON.stringify(marketDataCache));
 const saveHoldingSignals   = () => localStorage.setItem('shortfall_holding_signals', JSON.stringify(holdingSignalCache));
+const saveDcaStreaks       = () => localStorage.setItem('shortfall_dca_streaks', JSON.stringify(dcaStreakCache));
 const saveTaData           = () => localStorage.setItem('shortfall_ta_data', JSON.stringify(taCache));
 
 function buildPortfolioMap() {
@@ -568,101 +560,6 @@ function calcRSISeries(values, period) {
   return out;
 }
 
-function calcRSI(values, period) {
-  const series = calcRSISeries(values, period);
-  return series.length ? series[series.length - 1] : null;
-}
-
-function findSwingLows(values, lookback = SWING_LOOKBACK, maxSwings = 3) {
-  const swings = [];
-  for (let i = lookback; i < values.length - lookback; i++) {
-    const v = values[i];
-    let isLow = true;
-    for (let j = i - lookback; j <= i + lookback; j++) {
-      if (j !== i && values[j] < v) { isLow = false; break; }
-    }
-    if (isLow) swings.push({ index: i, value: v });
-  }
-  return swings.slice(-maxSwings);
-}
-
-function detectStructureBreak(closes, lookback = SWING_LOOKBACK) {
-  const swings = findSwingLows(closes, lookback, 2);
-  if (swings.length < 2) return { confirmed: false };
-  const [prev, last] = swings;
-  const higherLow = last.value > prev.value * (1 + SWING_MIN_MOVE_PCT / 100);
-  if (!higherLow) return { confirmed: false };
-  let swingHigh = -Infinity;
-  for (let i = prev.index; i <= last.index; i++) swingHigh = Math.max(swingHigh, closes[i]);
-
-  const breakoutIndex = (() => {
-    for (let i = last.index + 1; i < closes.length; i++) if (closes[i] > swingHigh) return i;
-    return -1;
-  })();
-  if (breakoutIndex === -1) return { confirmed: false, swingHigh, prevLow: prev.value, lastLow: last.value };
-
-  let extended = false, retested = false, invalidated = false;
-  for (let i = breakoutIndex; i < closes.length; i++) {
-    const distPct = ((closes[i] - swingHigh) / swingHigh) * 100;
-    if (!extended) {
-      if (distPct > RETEST_TOLERANCE_PCT) extended = true;
-    } else {
-      if (distPct < -RETEST_INVALIDATE_PCT) invalidated = true;
-      else if (distPct <= RETEST_TOLERANCE_PCT) retested = true;
-    }
-  }
-  const currentPrice = closes[closes.length - 1];
-  const holding = currentPrice > swingHigh;
-  return {
-    confirmed: extended && retested && holding && !invalidated,
-    swingHigh, prevLow: prev.value, lastLow: last.value, breakoutIndex, extended, retested, invalidated
-  };
-}
-
-function detectBullishDivergence(closes, rsiSeries, lookback = SWING_LOOKBACK) {
-  const swings = findSwingLows(closes, lookback, 2);
-  if (swings.length < 2) return { confirmed: false };
-  const [prev, last] = swings;
-  const rsiPrev = rsiSeries[prev.index], rsiLast = rsiSeries[last.index];
-  if (rsiPrev == null || rsiLast == null) return { confirmed: false };
-  const priceLowerLow = last.value < prev.value * (1 - SWING_MIN_MOVE_PCT / 100);
-  const rsiHigherLow = (rsiLast - rsiPrev) >= DIVERGENCE_MIN_RSI_DELTA;
-  return { confirmed: priceLowerLow && rsiHigherLow, rsiPrev, rsiLast };
-}
-
-function calcMACD(values) {
-  const emaFast = calcEMASeries(values, EMA_FAST);
-  const emaSlow = calcEMASeries(values, EMA_SLOW);
-  if (!emaFast.length || !emaSlow.length) return null;
-  const macdLine = [];
-  for (let i = 0; i < values.length; i++) {
-    if (emaFast[i] != null && emaSlow[i] != null) macdLine.push(emaFast[i] - emaSlow[i]);
-  }
-  if (macdLine.length < MACD_SIGNAL + 1) return null;
-  const signalSeries = calcEMASeries(macdLine, MACD_SIGNAL);
-  const macd = macdLine[macdLine.length - 1];
-  const signal = signalSeries[signalSeries.length - 1];
-  const prevMacd = macdLine[macdLine.length - 2];
-  const prevSignal = signalSeries[signalSeries.length - 2];
-  if (signal == null) return null;
-  return {
-    macd, signal, hist: macd - signal,
-    prevHist: (prevMacd != null && prevSignal != null) ? prevMacd - prevSignal : null
-  };
-}
-
-function calcBollingerPercentB(values, period, stddevMult) {
-  if (values.length < period) return null;
-  const slice = values.slice(values.length - period);
-  const mean = slice.reduce((a, b) => a + b, 0) / period;
-  const variance = slice.reduce((a, b) => a + (b - mean) ** 2, 0) / period;
-  const sd = Math.sqrt(variance);
-  const upper = mean + stddevMult * sd, lower = mean - stddevMult * sd;
-  const last = values[values.length - 1];
-  if (upper === lower) return 0.5;
-  return (last - lower) / (upper - lower);
-}
-
 function calcReturnPct(closes, days) {
   if (!closes || closes.length < days + 1) return null;
   const start = closes[closes.length - 1 - days];
@@ -671,37 +568,17 @@ function calcReturnPct(closes, days) {
   return (end - start) / start * 100;
 }
 
-function isOverextended(ta) {
-  if (!ta) return { extended: false, note: null };
-  const rsiHot = ta.rsi != null && ta.rsi >= RSI_OVERBOUGHT;
-  const bbHot = ta.bbPercentB != null && ta.bbPercentB >= BB_OVEREXTENDED;
-  if (rsiHot && bbHot) return { extended: true, note: `RSI overbought (${ta.rsi.toFixed(0)}) and price pinned near the upper Bollinger band (%B ${ta.bbPercentB.toFixed(2)})` };
-  if (rsiHot) return { extended: true, note: `RSI overbought (${ta.rsi.toFixed(0)})` };
-  if (bbHot) return { extended: true, note: `price pinned near the upper Bollinger band (%B ${ta.bbPercentB.toFixed(2)})` };
-  return { extended: false, note: null };
-}
-
 function computeTaFromCloses(closes) {
   if (!closes || closes.length < RSI_PERIOD + 1) return null;
-  const emaShortSeries = calcEMASeries(closes, EMA_TREND_SHORT);
   const emaLongSeries = calcEMASeries(closes, EMA_TREND_LONG);
-  const emaFastShortSeries = calcEMASeries(closes, EMA_TREND_FAST_SHORT);
-  const emaFastLongSeries = calcEMASeries(closes, EMA_TREND_FAST_LONG);
   const rsiSeries = calcRSISeries(closes, RSI_PERIOD);
   const dipWindowCloses = closes.slice(-DCA_DIP_WINDOW_DAYS);
   const rollingLow = dipWindowCloses.length ? Math.min(...dipWindowCloses) : null;
   return {
     rsi: rsiSeries.length ? rsiSeries[rsiSeries.length - 1] : null,
-    macd: calcMACD(closes),
-    bbPercentB: calcBollingerPercentB(closes, BB_PERIOD, BB_STDDEV),
-    emaShort: emaShortSeries.length ? emaShortSeries[emaShortSeries.length - 1] : null,
     emaLong: emaLongSeries.length ? emaLongSeries[emaLongSeries.length - 1] : null,
-    emaFastShort: emaFastShortSeries.length ? emaFastShortSeries[emaFastShortSeries.length - 1] : null,
-    emaFastLong: emaFastLongSeries.length ? emaFastLongSeries[emaFastLongSeries.length - 1] : null,
     rollingLow,
     rollingLowWindowDays: dipWindowCloses.length,
-    structureBreak: detectStructureBreak(closes),
-    divergence: detectBullishDivergence(closes, rsiSeries),
     closes,
     version: TA_LOGIC_VERSION,
     timestamp: Date.now()
@@ -726,7 +603,7 @@ async function fetchTaHistory(id) {
 
 function auditTa(ta) {
   if (!ta) return true;
-  const fields = [ta.rsi, ta.macd?.hist, ta.macd?.macd, ta.macd?.signal, ta.emaShort, ta.emaLong, ta.bbPercentB];
+  const fields = [ta.rsi, ta.emaLong, ta.rollingLow];
   return fields.every(v => v == null || !isNaN(v));
 }
 
@@ -826,6 +703,16 @@ function classifyHolding(md, item, ta, macroTa) {
   const athDate = md.ath_date;
   const atlValue = md.atl;
   const cur = pricesCache[item.id] ?? md.current_price;
+  const ownReturnPct = calcReturnPct(ta?.closes, REL_STRENGTH_WINDOW_DAYS);
+  const btcReturnPct = calcReturnPct(macroTa?.closes, REL_STRENGTH_WINDOW_DAYS);
+  const relStrengthVsBtc = (ownReturnPct != null && btcReturnPct != null) ? (ownReturnPct - btcReturnPct) : null;
+  const emaFastShortSeries = ta?.closes ? calcEMASeries(ta.closes, EMA_TREND_FAST_SHORT) : [];
+  const emaFastLongSeries = ta?.closes ? calcEMASeries(ta.closes, EMA_TREND_FAST_LONG) : [];
+  const emaFastShort = emaFastShortSeries.length ? emaFastShortSeries[emaFastShortSeries.length - 1] : null;
+  const emaFastLong = emaFastLongSeries.length ? emaFastLongSeries[emaFastLongSeries.length - 1] : null;
+  const sentiment = (emaFastShort == null || emaFastLong == null)
+    ? null
+    : emaFastShort > emaFastLong ? 'Bullish' : emaFastShort < emaFastLong ? 'Bearish' : 'Mixed';
 
   const noTradingData = (volume == null || mcap == null);
   const zeroMcap = !noTradingData && mcap === 0;
@@ -882,86 +769,38 @@ function classifyHolding(md, item, ta, macroTa) {
   }
 
   const isDiscountCandidate = signal === 'WAIT' && athPct != null && athPct <= DCA_MODERATE_PCT;
-  const isZombieTier = athPct != null && athPct <= DCA_DEEP_PCT;
-  if (isDiscountCandidate && isZombieTier) {
+  let dcaStreakDay = null;
+  if (isDiscountCandidate) {
+    const relStrength = relStrengthVsBtc;
+    const relStrengthBonus = relStrength == null ? 0 : Math.max(REL_STRENGTH_MIN_BONUS, Math.min(REL_STRENGTH_MAX_BONUS, relStrength / REL_STRENGTH_SCALE));
+    const relStrengthNote = relStrength == null
+      ? ''
+      : ` ${relStrength > 0 ? 'Outperforming' : 'Underperforming'} BTC (${relStrength >= 0 ? '+' : ''}${relStrength.toFixed(1)}pp over ${REL_STRENGTH_WINDOW_DAYS}d) — ${relStrength > 0 ? 'capital may already be rotating in.' : 'weight this accordingly.'}`;
+
     if (ta && ta.rollingLow != null && cur != null) {
       const aboveLow = (cur - ta.rollingLow) / ta.rollingLow * 100;
       const nearLow = aboveLow <= DCA_DIP_NEAR_PCT;
       const rsiOversold = ta.rsi != null && ta.rsi <= RSI_OVERSOLD;
       const atLow = nearLow && rsiOversold;
       if (atLow) {
+        if (!dcaStreakCache[item.id]) { dcaStreakCache[item.id] = { startedAt: Date.now() }; saveDcaStreaks(); }
+        dcaStreakDay = Math.floor((Date.now() - dcaStreakCache[item.id].startedAt) / 86400000) + 1;
         signal = 'ACCUMULATE'; colorKey = 'dca';
-        strength = Math.min(60, strength + 30);
-        reason = `Dormant deep enough that a classic reversal call isn't realistic — this flags adds only when price is near its ${ta.rollingLowWindowDays}-day low with RSI also oversold, and both are true right now. Not a reversal prediction, just an efficient entry.`;
-      } else if (nearLow && !rsiOversold) {
-        reason = `Near its ${ta.rollingLowWindowDays}-day low, but RSI isn't oversold yet — this flag needs both together to avoid firing on every minor dip.`;
+        strength = Math.round(Math.min(60, strength + 30) + relStrengthBonus);
+        reason = `Price is near its own ${ta.rollingLowWindowDays}-day low with RSI also oversold, and both are true right now — not a reversal prediction, just a capital-efficient entry point. ${dcaStreakDay === 1 ? 'First flagged today.' : `First flagged ${dcaStreakDay} days ago and still holding — this is a continuation, not a new event.`}${relStrengthNote}`;
       } else {
-        reason = `Dormant deep enough that a classic reversal call isn't realistic — this only flags an add when price is near its ${ta.rollingLowWindowDays}-day low with RSI also oversold. Currently ${aboveLow.toFixed(1)}% above that low — not there yet.`;
+        if (dcaStreakCache[item.id]) { delete dcaStreakCache[item.id]; saveDcaStreaks(); }
+        if (nearLow && !rsiOversold) {
+          reason = `Near its ${ta.rollingLowWindowDays}-day low, but RSI isn't oversold yet — this flag needs both together to avoid firing on every minor dip.`;
+        } else {
+          reason = `Not near its ${ta.rollingLowWindowDays}-day low yet (currently ${aboveLow.toFixed(1)}% above it) — this only flags an add when price and RSI are both at an extreme.`;
+        }
       }
     } else {
       reason = `Not enough price history loaded yet to judge proximity to its recent-range low.`;
     }
-  } else if (isDiscountCandidate) {
-    const structureConfirmed = ta?.structureBreak?.confirmed;
-    const divergenceConfirmed = ta?.divergence?.confirmed;
-    const coinReturn = calcReturnPct(ta?.closes, REL_STRENGTH_WINDOW_DAYS);
-    const btcReturn = calcReturnPct(macroTa?.closes, REL_STRENGTH_WINDOW_DAYS);
-    const relStrength = (coinReturn != null && btcReturn != null) ? (coinReturn - btcReturn) : null;
-    const relStrengthBonus = relStrength == null ? 0 : (relStrength > 0 ? REL_STRENGTH_BONUS : -REL_STRENGTH_BONUS);
-    const relStrengthNote = relStrength == null
-      ? ''
-      : relStrength > 0
-      ? ` Also outperforming BTC — capital may already be rotating in.`
-      : ` Underperforming BTC though, so weight this slightly lighter.`;
-
-    if (structureConfirmed) {
-      signal = 'ACCUMULATE'; colorKey = 'dca';
-      strength = Math.min(65, strength + 35 + relStrengthBonus);
-      reason = `Reversal confirmed by price structure: higher low formed, reclaimed the prior swing high (${formatINR(ta.structureBreak.swingHigh, 4)}), retested it, and held. Backtesting didn't show this reliably beating a random entry though, so it's scored as directionally meaningful, not as top-tier conviction.${relStrengthNote}`;
-    } else if (divergenceConfirmed) {
-      signal = 'ACCUMULATE'; colorKey = 'dca';
-      strength = Math.min(80, strength + 50 + relStrengthBonus);
-      reason = `Reversal confirmed by bullish divergence: price made a lower low while RSI didn't — selling pressure fading before price itself turned, typically a leading signal.${relStrengthNote}`;
-    } else if (ta && ta.rsi != null && ta.macd) {
-      const rsi = ta.rsi;
-      const macdBullish = ta.macd.hist > 0;
-      const freshCross = ta.macd.prevHist != null && ta.macd.prevHist <= 0 && ta.macd.hist > 0;
-      const oversold = rsi <= RSI_OVERSOLD;
-      const extension = isOverextended(ta);
-      const trendBullish = (ta.emaFastShort != null && ta.emaFastLong != null) ? ta.emaFastShort > ta.emaFastLong : null;
-
-      if (extension.extended) {
-        reason = `Already stretched (${extension.note}) with no structure break or divergence to back an add here — staying at WAIT rather than chasing it.`;
-      } else if (macdBullish && (oversold || trendBullish)) {
-        signal = 'ACCUMULATE'; colorKey = 'dca';
-        strength = (oversold ? Math.min(65, strength + 35) : Math.min(55, strength + 25)) + relStrengthBonus;
-        reason = `Momentum-only confirmation: MACD bullish${freshCross ? ' (fresh cross)' : ''}, ${oversold ? 'RSI oversold' : 'fast EMA trend already turning'} — no structure break or divergence yet, so this is the weakest confirmation tier here, worth smaller size.${relStrengthNote}`;
-      } else if (macdBullish) {
-        strength = Math.max(strength, 25);
-        reason = `MACD is turning bullish, but without oversold RSI, trend backing, structure break, or divergence — too early to call this confirmed.`;
-      } else {
-        reason = `No confirmation yet — MACD still bearish, no structure break or divergence. Cheap isn't the same as stabilized.`;
-      }
-    } else {
-      const chg7d = md.change_7d;
-      const chg30d = md.change_30d;
-      if (chg7d == null) {
-        reason = `No TA history or recent price-trend data yet to assess a reversal — will reassess once data loads.`;
-      } else if (chg7d <= CRASH_7D_PCT) {
-        reason = `Still falling sharply (${chg7d.toFixed(1)}% over 7 days) — clearly not confirmed.`;
-      } else {
-        const chg30dWeekly = chg30d != null ? chg30d * (7 / 30) : null;
-        const isDecelerating = chg30dWeekly != null && chg7d > chg30dWeekly + DECEL_BUFFER;
-        const isFlatOrUp = chg7d >= -5;
-        if (isFlatOrUp || isDecelerating) {
-          signal = 'ACCUMULATE'; colorKey = 'dca';
-          strength = Math.min(50, strength + 20) + relStrengthBonus;
-          reason = `No TA history loaded yet, but 7-day price action (${chg7d >= 0 ? '+' : ''}${chg7d.toFixed(1)}%) isn't showing further sharp decline — a tentative, low-conviction fallback signal only, not real TA confirmation.`;
-        } else {
-          reason = `No TA history loaded yet, and recent price action (${chg7d.toFixed(1)}% over 7 days) doesn't show the decline slowing — staying at WAIT.`;
-        }
-      }
-    }
+  } else {
+    if (dcaStreakCache[item.id]) { delete dcaStreakCache[item.id]; saveDcaStreaks(); }
   }
 
   const nearTarget = item.target && cur != null ? (cur >= item.target * (1 - TARGET_PROXIMITY_PCT / 100)) : false;
@@ -977,21 +816,15 @@ function classifyHolding(md, item, ta, macroTa) {
     change24h: md.change_24h, change7d: md.change_7d, change30d: md.change_30d,
     nearTarget: !!(nearTarget && item.target),
     rsi: ta?.rsi ?? null,
-    macdHist: ta?.macd?.hist ?? null,
     emaLong: ta?.emaLong ?? null,
     rollingLow: ta?.rollingLow ?? null,
     rollingLowWindowDays: ta?.rollingLowWindowDays ?? null,
     cmp: cur ?? null,
-    emaTrendBullish: (ta?.emaFastShort != null && ta?.emaFastLong != null) ? (ta.emaFastShort > ta.emaFastLong) : null,
-    bbPercentB: ta?.bbPercentB ?? null,
-    structureConfirmed: ta?.structureBreak?.confirmed ?? null,
-    macroBullish: (macroTa?.emaShort != null && macroTa?.emaLong != null) ? macroTa.emaShort > macroTa.emaLong : null,
-    relStrengthVsBtc: (calcReturnPct(ta?.closes, REL_STRENGTH_WINDOW_DAYS) != null && calcReturnPct(macroTa?.closes, REL_STRENGTH_WINDOW_DAYS) != null)
-      ? calcReturnPct(ta?.closes, REL_STRENGTH_WINDOW_DAYS) - calcReturnPct(macroTa?.closes, REL_STRENGTH_WINDOW_DAYS)
-      : null,
-    divergenceConfirmed: ta?.divergence?.confirmed ?? null,
+    relStrengthVsBtc,
+    sentiment,
     taStale: !ta,
     taTimestamp: ta?.timestamp ?? null,
+    dcaStreakDay,
   };
 }
 
@@ -1119,37 +952,6 @@ async function fetchPricesChunk(validIds, attempt = 0) {
   return { updated: 0, total: validIds.length };
 }
 
-async function fetchBinanceTickerMap() {
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
-    const res = await fetch(`${BINANCE_API_BASE}/ticker/price`, { signal: controller.signal });
-    clearTimeout(timeoutId);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    const map = {};
-    data.forEach(t => { map[t.symbol] = parseFloat(t.price); });
-    return map;
-  } catch (err) {
-    return null;
-  }
-}
-
-async function fetchUsdInrRate() {
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
-    const res = await fetch(`${API_BASE}/simple/price?ids=tether&vs_currencies=inr&x_cg_demo_api_key=${API_KEY}`, { signal: controller.signal });
-    clearTimeout(timeoutId);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    const rate = data?.tether?.inr;
-    return (rate != null && !isNaN(rate)) ? rate : null;
-  } catch (err) {
-    return null;
-  }
-}
-
 async function fetchPrices(ids) {
   if (!Array.isArray(ids) || !ids.length) return false;
   const validIds = ids.filter(Boolean);
@@ -1167,21 +969,6 @@ async function fetchPrices(ids) {
     lastPriceTime = Date.now();
     localStorage.setItem('shortfall_prices_time', lastPriceTime);
     savePrices();
-  }
-
-  const [binanceMap, usdInrRate] = await Promise.all([fetchBinanceTickerMap(), fetchUsdInrRate()]);
-  if (binanceMap && usdInrRate) {
-    let overlaid = 0;
-    validIds.forEach(id => {
-      const item = portfolioMap[id];
-      if (!item?.symbol) return;
-      const usdtPrice = binanceMap[`${item.symbol}USDT`];
-      if (usdtPrice != null && !isNaN(usdtPrice)) {
-        pricesCache[id] = usdtPrice * usdInrRate;
-        overlaid++;
-      }
-    });
-    if (overlaid > 0) savePrices();
   }
 
   if (updated === validIds.length) {
@@ -1263,7 +1050,7 @@ function signalCellHTML(id) {
       </div>`
     };
   }
-  const label = `${SIGNAL_LABELS_SHORT[ta.signal] || ta.signal} (${ta.strength}%)`;
+  const label = `${SIGNAL_LABELS_SHORT[ta.signal] || ta.signal} (${ta.strength}%)${ta.signal === 'ACCUMULATE' && ta.dcaStreakDay ? ` · D${ta.dcaStreakDay}` : ''}`;
   const html = `<div class="signal-wrap">
       <span class="health-dot" style="background:${health.color}" title="${health.label}"></span>
       <span class="signal-badge ${ta.colorKey}">${label}</span>
@@ -1546,17 +1333,13 @@ function handleRowExpansion(tr, item, forceReExpand = false) {
       <div class="detail-group-title">Technical Confirmation${ta.taTimestamp == null ? '' : (() => { const ageHrs = (Date.now() - ta.taTimestamp) / 3600000; const stale = ageHrs >= 24; return ` <span style="font-weight:400;color:${stale ? 'var(--sell)' : 'var(--muted-2)'}">· TA as of ${ageHrs < 1 ? '<1h ago' : ageHrs < 48 ? Math.round(ageHrs) + 'h ago' : Math.round(ageHrs / 24) + 'd ago'}${stale ? ' (stale — refresh may be failing)' : ''}</span>`; })()}</div>
       <div class="detail-grid">
         <div class="detail-item"><div class="label">Conviction</div><div class="value">${ta.strength}%</div></div>
-        <div class="detail-item"><div class="label">RSI (14)</div><div class="value ${ta.rsi != null && ta.rsi <= RSI_OVERSOLD ? 'buy' : ta.rsi != null && ta.rsi >= RSI_OVERBOUGHT ? 'sell' : ''}">${ta.rsi == null ? '—' : ta.rsi.toFixed(0)}</div></div>
-        <div class="detail-item"><div class="label">MACD Hist</div><div class="value ${ta.macdHist != null ? (ta.macdHist > 0 ? 'buy' : 'sell') : ''}">${ta.macdHist == null ? '—' : ta.macdHist.toFixed(4)}</div></div>
-        <div class="detail-item"><div class="label">Trend (20/50 EMA)</div><div class="value ${ta.emaTrendBullish == null ? '' : ta.emaTrendBullish ? 'buy' : 'sell'}">${ta.emaTrendBullish == null ? '—' : ta.emaTrendBullish ? 'Bullish' : 'Bearish'}</div></div>
+        <div class="detail-item"><div class="label">RSI (14)</div><div class="value ${ta.rsi != null && ta.rsi <= RSI_OVERSOLD ? 'buy' : ''}">${ta.rsi == null ? '—' : ta.rsi.toFixed(0)}</div></div>
         <div class="detail-item"><div class="label">CMP → EMA 200</div><div class="value target-pct">${(ta.emaLong == null || ta.cmp == null) ? '—' : (((ta.emaLong - ta.cmp) / ta.cmp * 100) >= 0 ? '+' : '') + ((ta.emaLong - ta.cmp) / ta.cmp * 100).toFixed(1) + '% (' + formatINR(ta.emaLong, 4) + ')'}</div></div>
         <div class="detail-item"><div class="label">${ta.rollingLowWindowDays || DCA_DIP_WINDOW_DAYS}-Day Low</div><div class="value">${(ta.rollingLow == null || ta.cmp == null) ? '—' : formatINR(ta.rollingLow, 4) + ' (' + (((ta.cmp - ta.rollingLow) / ta.rollingLow * 100) >= 0 ? '+' : '') + ((ta.cmp - ta.rollingLow) / ta.rollingLow * 100).toFixed(1) + '% above)'}</div></div>
-        <div class="detail-item"><div class="label">Bollinger %B</div><div class="value">${ta.bbPercentB == null ? '—' : ta.bbPercentB.toFixed(2)}</div></div>
-        <div class="detail-item"><div class="label">Structure Break</div><div class="value ${ta.structureConfirmed ? 'buy' : ''}">${ta.structureConfirmed == null ? '—' : ta.structureConfirmed ? 'Confirmed' : 'No'}</div></div>
-        <div class="detail-item"><div class="label">Bullish Divergence</div><div class="value ${ta.divergenceConfirmed ? 'buy' : ''}">${ta.divergenceConfirmed == null ? '—' : ta.divergenceConfirmed ? 'Confirmed' : 'No'}</div></div>
-        <div class="detail-item"><div class="label">Rel. Strength (${REL_STRENGTH_WINDOW_DAYS}d vs BTC)</div><div class="value ${ta.relStrengthVsBtc > 0 ? 'buy' : ta.relStrengthVsBtc < 0 ? 'sell' : ''}">${ta.relStrengthVsBtc == null ? '—' : (ta.relStrengthVsBtc >= 0 ? '+' : '') + ta.relStrengthVsBtc.toFixed(1) + 'pp'}</div></div>
+        <div class="detail-item"><div class="label">Sentiment (20/50 EMA)</div><div class="value ${ta.sentiment === 'Bullish' ? 'buy' : ta.sentiment === 'Bearish' ? 'sell' : ''}">${ta.sentiment == null ? '—' : ta.sentiment}</div></div>
+        <div class="detail-item"><div class="label">Rel. Strength (${REL_STRENGTH_WINDOW_DAYS}d vs BTC)</div><div class="value ${ta.relStrengthVsBtc > 0 ? 'buy' : ta.relStrengthVsBtc < 0 ? 'sell' : ''}">${ta.relStrengthVsBtc == null ? '—' : (ta.relStrengthVsBtc >= 0 ? '+' : '') + ta.relStrengthVsBtc.toFixed(1) + 'pp (' + (ta.relStrengthVsBtc > 0 ? 'Outperforming' : 'Underperforming') + ')'}</div></div>
       </div>
-      ${ta.taStale ? '<div class="detail-reason" style="color:var(--muted-2)">TA history for this coin hasn\'t loaded yet — signal is using the fallback momentum check for now.</div>' : ''}
+      ${ta.taStale ? '<div class="detail-reason" style="color:var(--muted-2)">TA history for this coin hasn\'t loaded yet.</div>' : ''}
       <div class="detail-reason"><b>Why:</b> ${ta.reason}</div>
       ${chartHtml}
       ${removeBtnHtml}
