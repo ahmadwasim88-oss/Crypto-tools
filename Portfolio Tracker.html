@@ -453,7 +453,7 @@ const DCA_WATCH_PCT = -20;
 
 const CRASH_7D_PCT = -15;
 
-const TA_REFRESH_INTERVAL = 4 * 60 * 60000;
+const TA_ALIGN_BUFFER_MS = 15 * 60000; // let CoinGecko's backend finalize the new daily candle before we trust it
 const TA_HISTORY_DAYS = 365;
 const TA_FETCH_DELAY_MS = 1500;
 
@@ -486,7 +486,6 @@ let coinListLoaded = false;
 
 let lastPriceTime = parseInt(localStorage.getItem('shortfall_prices_time') || '0', 10);
 let lastTaTime     = parseInt(localStorage.getItem('shortfall_ta_time') || '0', 10);
-let refreshTaTimer = null;
 let taFetchInFlight = false;
 
 let currentSortColumn = 'gain';
@@ -494,13 +493,6 @@ let sortDir = 'desc';
 
 const formatTime = (ts) => !ts ? 'N/A' : new Date(ts).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
 const formatLogTime = () => new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
-const formatRelativeAge = (ts) => {
-  if (!ts) return null;
-  const hrs = (Date.now() - ts) / 3600000;
-  if (hrs < 1) return '<1h ago';
-  if (hrs < 48) return Math.round(hrs) + 'h ago';
-  return Math.round(hrs / 24) + 'd ago';
-};
 const formatINR = (n, maxDecimals = 2, compact = false) => {
   if (n == null || isNaN(n)) return '—';
   const abs = Math.abs(n);
@@ -639,6 +631,21 @@ function auditTa(ta) {
   return fields.every(v => v == null || !isNaN(v));
 }
 
+// True if the most recent daily TA-update window (shortly after each UTC-midnight candle close) has
+// passed since `ts`. This is checked fresh on every price refresh (self-healing) instead of relying on
+// a scheduled timer firing at an exact moment — a setTimeout targeting a precise clock time can silently
+// get dropped if the tab is backgrounded/throttled, and then there's no way to recover until the next
+// scheduled attempt. Re-checking "has the window passed?" on every 2-minute price tick instead means a
+// missed window is caught and corrected on the very next tick, not hours later.
+function taBoundaryPassedSince(ts) {
+  if (!ts) return true;
+  const now = Date.now();
+  const d = new Date(now);
+  const todaysBoundary = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0) + TA_ALIGN_BUFFER_MS;
+  const mostRecentBoundary = now >= todaysBoundary ? todaysBoundary : todaysBoundary - 24 * 60 * 60000;
+  return ts < mostRecentBoundary;
+}
+
 async function fetchTaForPortfolio(ids, { force = false } = {}) {
   const hasEnoughHistory = cached => cached.closes && cached.closes.length >= TA_HISTORY_DAYS - 20;
 
@@ -669,7 +676,7 @@ async function fetchTaForPortfolio(ids, { force = false } = {}) {
     if (force || !cached) return true;
     if (cached.fetchVersion !== TA_FETCH_VERSION) return true;
     if (cached.version !== TA_LOGIC_VERSION && !hasEnoughHistory(cached)) return true;
-    return (Date.now() - cached.timestamp) >= TA_REFRESH_INTERVAL;
+    return taBoundaryPassedSince(cached.timestamp);
   });
   if (!stale.length || taFetchInFlight) return;
   taFetchInFlight = true;
@@ -702,38 +709,10 @@ async function fetchTaForPortfolio(ids, { force = false } = {}) {
   taFetchInFlight = false;
 }
 
-function scheduleTaSweep() {
-  if (refreshTaTimer) clearInterval(refreshTaTimer);
-  refreshTaTimer = setInterval(() => {
-    const ids = [...new Set([...saved.map(s => s.id).filter(Boolean), 'bitcoin'])];
-    fetchTaForPortfolio(ids);
-  }, TA_REFRESH_INTERVAL);
-}
-
-// Aligns TA refresh to shortly after each UTC daily candle close, instead of purely a rolling interval
-// timed from whenever the session happened to load. Without this, two browsers opened at different
-// times each start their own 4h countdown from load, so they can disagree on TA for hours after a new
-// candle closes depending purely on session timing — this makes every session catch up to the same
-// closed-candle state within a fixed window after each UTC midnight, regardless of load time.
-const TA_ALIGN_BUFFER_MS = 15 * 60000; // let CoinGecko's backend finalize the new daily candle first
-
-function scheduleAlignedTaRefresh() {
-  const now = new Date();
-  const nextMidnightUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0);
-  const msUntilAligned = (nextMidnightUtc - now.getTime()) + TA_ALIGN_BUFFER_MS;
-  setTimeout(() => {
-    const ids = [...new Set([...saved.map(s => s.id).filter(Boolean), 'bitcoin'])];
-    fetchTaForPortfolio(ids, { force: true });
-    setInterval(() => {
-      const idsNow = [...new Set([...saved.map(s => s.id).filter(Boolean), 'bitcoin'])];
-      fetchTaForPortfolio(idsNow, { force: true });
-    }, 24 * 60 * 60000);
-  }, msUntilAligned);
-}
-
 
 // --- Price pipeline convention ---
-// CLOSE-based (from ta.closes / macroTa.closes, refreshed every TA_REFRESH_INTERVAL, excludes today's
+// CLOSE-based (from ta.closes / macroTa.closes, refreshed once daily shortly after each UTC candle close
+// via the boundary-aware check on every price tick — see taBoundaryPassedSince — excludes today's
 // still-forming candle): RSI, EMA200 (for CMP->EMA200), EMA20/50 (Sentiment), relative-strength-vs-BTC
 // returns, ta.rollingLow itself. These intentionally never mix in live price — that's what makes them
 // stable, closed-candle indicators rather than jittery intraday ones.
@@ -908,7 +887,6 @@ function classifyHolding(md, item, ta, macroTa) {
     relStrengthVsBtc,
     sentiment,
     taStale: !ta,
-    taTimestamp: ta?.timestamp ?? null,
     dcaStreakDay,
   };
 }
@@ -1105,6 +1083,8 @@ async function schedulePriceFetch() {
     recomputeHoldingSignals();
     updateScheduledStatus();
     updatePricesInTable();
+    const taIds = [...new Set([...ids, 'bitcoin'])];
+    fetchTaForPortfolio(taIds); // no-op unless the internal boundary-aware staleness check says otherwise
   } else {
     pricesCache = JSON.parse(localStorage.getItem('shortfall_prices') || '{}');
     updatePricesInTable();
@@ -1443,7 +1423,7 @@ function handleRowExpansion(tr, item, forceReExpand = false) {
         <div class="detail-item"><div class="label">MCap Rank</div><div class="value">${ta.rank == null ? '—' : '#' + ta.rank}</div></div>
       </div>
 
-      <div class="detail-group-title">Technical Confirmation${ta.taTimestamp == null ? '' : (() => { const stale = (Date.now() - ta.taTimestamp) / 3600000 >= 24; return ` <span style="font-weight:400;color:${stale ? 'var(--sell)' : 'var(--muted-2)'}">· TA as of ${formatRelativeAge(ta.taTimestamp)}${stale ? ' (stale — refresh may be failing)' : ''}</span>`; })()}</div>
+      <div class="detail-group-title">Technical Confirmation</div>
       <div class="detail-grid">
         <div class="detail-item"><div class="label">Conviction</div><div class="value">${ta.strength}%</div></div>
         <div class="detail-item"><div class="label">RSI (14)</div><div class="value ${ta.rsi != null && ta.rsi <= RSI_OVERSOLD ? 'buy' : ta.rsi != null && ta.rsi >= RSI_OVERBOUGHT ? 'sell' : ''}">${ta.rsi == null ? '—' : ta.rsi.toFixed(0)}</div></div>
@@ -1609,8 +1589,6 @@ if (isApiReachable) {
   await fetchPrices(startIds);
   recomputeHoldingSignals();
   fetchTaForPortfolio(startTaIds);
-  scheduleTaSweep();
-  scheduleAlignedTaRefresh();
 } else {
   pricesCache = JSON.parse(localStorage.getItem('shortfall_prices') || '{}');
   marketDataCache = JSON.parse(localStorage.getItem('shortfall_market_data') || '{}');
