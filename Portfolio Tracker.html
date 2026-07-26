@@ -20,7 +20,6 @@
   --sell: #ff5c72;
   --sell-dim: rgba(255,92,114,0.12);
   --dca: #22c1d9;
-  --dca-dim: rgba(34,193,217,0.12);
   --trim: #e8a63b;
   --trim-dim: rgba(232,166,59,0.12);
   --hold: #7d8998;
@@ -89,7 +88,8 @@ header {
 .pill.error .dot { background: var(--sell); }
 .pill.info { color: var(--muted); background: var(--panel-2); }
 .pill.info .dot { background: var(--muted); }
-.time-label { display: none; }
+.freshness-footer { display: flex; align-items: center; gap: 7px; font-family: var(--font-mono); font-size: 10px; color: var(--muted-2); padding-bottom: 5px; margin-bottom: 5px; border-bottom: 1px solid var(--border); }
+.freshness-footer .ff-sep { opacity: 0.4; }
 .toolbar {
   display: flex;
   gap: 8px;
@@ -237,8 +237,8 @@ td[data-col="coin"] { max-width: 44px; overflow: hidden; text-overflow: ellipsis
 .price-bar-change { font-family: var(--font-mono); font-size: 11px; font-weight: 600; }
 .price-bar-change.buy { color: var(--buy); }
 .price-bar-change.sell { color: var(--sell); }
-.price-bar-track { position: relative; height: 6px; border-radius: 3px; background: linear-gradient(90deg, var(--sell-dim), var(--panel-2), var(--buy-dim)); }
-.price-bar-marker { position: absolute; top: 50%; width: 11px; height: 11px; border-radius: 50%; background: var(--accent); border: 2px solid var(--panel); transform: translate(-50%, -50%); box-shadow: 0 0 0 1px var(--border); }
+.price-bar-track { position: relative; height: 8px; border-radius: 4px; background: linear-gradient(90deg, rgba(255,92,114,0.5) 0%, rgba(86,99,116,0.35) 50%, rgba(47,213,118,0.5) 100%); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08); }
+.price-bar-marker { position: absolute; top: 50%; width: 15px; height: 15px; border-radius: 50%; background: var(--accent); border: 3px solid var(--bg); transform: translate(-50%, -50%); box-shadow: 0 0 0 2px var(--accent), 0 0 10px 2px rgba(76,141,255,0.55); }
 .price-bar-labels { display: flex; justify-content: space-between; margin-top: 4px; font-family: var(--font-mono); font-size: 10px; color: var(--muted-2); }
 .detail-item { min-width: 0; }
 .detail-item .label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted-2); margin-bottom: 2px; }
@@ -340,7 +340,7 @@ td[data-col="coin"] { max-width: 44px; overflow: hidden; text-overflow: ellipsis
   text-overflow: ellipsis;
   transition: opacity 0.4s ease;
 }
-.activity-message .ts { color: var(--muted-2); margin-right: 6px; }
+.activity-message .ts { color: var(--muted-2); font-weight: 600; margin-right: 6px; }
 .activity-message.ok { color: var(--buy); }
 .activity-message.warn { color: var(--trim); }
 .activity-message.error { color: var(--sell); }
@@ -354,12 +354,10 @@ td[data-col="coin"] { max-width: 44px; overflow: hidden; text-overflow: ellipsis
 <header>
   <div class="brand">
     <h1>Portfolio Tracker</h1>
-    <span class="sub">Confirmed reversal signals, gated by liquidity &amp; macro trend — discount depth alone is never enough</span>
+    <span class="sub">Capital-efficient DCA signals, gated by liquidity — discount depth alone is never enough</span>
   </div>
   <div class="status-panel">
     <div id="currentStatus" class="pill info"><span class="dot"></span>Initializing…</div>
-    <span id="lastPriceUpdate" class="time-label">Prices: N/A</span>
-    <span id="lastTaUpdate" class="time-label">Signals: N/A</span>
   </div>
 </header>
 
@@ -370,9 +368,9 @@ td[data-col="coin"] { max-width: 44px; overflow: hidden; text-overflow: ellipsis
 </div>
 
 <div class="legend">
-  <span><span class="sw" style="background:var(--dca)"></span>Accumulate — discounted from its all-time high, healthy liquidity, and not actively crashing right now</span>
-  <span><span class="sw" style="background:var(--hold)"></span>Hold — no strong signal either way right now</span>
-  <span><span class="sw" style="background:var(--hold)"></span>Wait — deeply discounted, but still falling sharply over the past week</span>
+  <span><span class="sw" style="background:var(--dca)"></span>Accumulate — near its own 90-day low with RSI also oversold, right now — a capital-efficient entry point, not a reversal call</span>
+  <span><span class="sw" style="background:var(--hold)"></span>Hold — not discounted enough from its all-time high to be a DCA candidate yet</span>
+  <span><span class="sw" style="background:var(--hold)"></span>Wait — meaningfully discounted, but hasn't hit the near-low + oversold-RSI conditions yet</span>
   <span><span class="sw" style="background:var(--trim)"></span>Trim — near its all-time high, or at/above your target</span>
   <span><span class="sw" style="background:var(--trim)"></span>At Risk — thin liquidity / micro-cap, worth watching closely</span>
   <span><span class="sw" style="background:var(--sell)"></span>Exit — trading has effectively stopped; holding has little expected value regardless of price</span>
@@ -399,6 +397,7 @@ td[data-col="coin"] { max-width: 44px; overflow: hidden; text-overflow: ellipsis
 </div>
 
 <div id="activityLogContainer" class="activity-log-container">
+  <div class="freshness-footer"><span id="lastPriceUpdate">Prices —</span><span class="ff-sep">·</span><span id="lastTaUpdate">TA —</span></div>
   <div id="activityLog"></div>
 </div>
 
@@ -493,8 +492,15 @@ let taFetchInFlight = false;
 let currentSortColumn = 'gain';
 let sortDir = 'desc';
 
-const formatTime = (ts) => !ts ? 'N/A' : new Date(ts).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
-const formatLogTime = () => new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+const formatTime = (ts) => !ts ? 'N/A' : new Date(ts).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
+const formatLogTime = () => new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
+const formatRelativeAge = (ts) => {
+  if (!ts) return null;
+  const hrs = (Date.now() - ts) / 3600000;
+  if (hrs < 1) return '<1h ago';
+  if (hrs < 48) return Math.round(hrs) + 'h ago';
+  return Math.round(hrs / 24) + 'd ago';
+};
 const formatINR = (n, maxDecimals = 2, compact = false) => {
   if (n == null || isNaN(n)) return '—';
   const abs = Math.abs(n);
@@ -535,8 +541,8 @@ function buildPortfolioMap() {
 }
 
 function updateScheduledStatus() {
-  lastPriceUpdateEl.textContent = `Prices: ${formatTime(lastPriceTime)}`;
-  lastTaUpdateEl.textContent = `TA: ${lastTaTime ? formatTime(lastTaTime) : 'loading…'}`;
+  lastPriceUpdateEl.textContent = `Prices ${formatTime(lastPriceTime)}`;
+  lastTaUpdateEl.textContent = `TA ${lastTaTime ? formatTime(lastTaTime) : 'loading…'}`;
 }
 
 function setCurrentStatus(text, type = 'info') {
@@ -704,6 +710,27 @@ function scheduleTaSweep() {
   }, TA_REFRESH_INTERVAL);
 }
 
+// Aligns TA refresh to shortly after each UTC daily candle close, instead of purely a rolling interval
+// timed from whenever the session happened to load. Without this, two browsers opened at different
+// times each start their own 4h countdown from load, so they can disagree on TA for hours after a new
+// candle closes depending purely on session timing — this makes every session catch up to the same
+// closed-candle state within a fixed window after each UTC midnight, regardless of load time.
+const TA_ALIGN_BUFFER_MS = 15 * 60000; // let CoinGecko's backend finalize the new daily candle first
+
+function scheduleAlignedTaRefresh() {
+  const now = new Date();
+  const nextMidnightUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0);
+  const msUntilAligned = (nextMidnightUtc - now.getTime()) + TA_ALIGN_BUFFER_MS;
+  setTimeout(() => {
+    const ids = [...new Set([...saved.map(s => s.id).filter(Boolean), 'bitcoin'])];
+    fetchTaForPortfolio(ids, { force: true });
+    setInterval(() => {
+      const idsNow = [...new Set([...saved.map(s => s.id).filter(Boolean), 'bitcoin'])];
+      fetchTaForPortfolio(idsNow, { force: true });
+    }, 24 * 60 * 60000);
+  }, msUntilAligned);
+}
+
 
 // --- Price pipeline convention ---
 // CLOSE-based (from ta.closes / macroTa.closes, refreshed every TA_REFRESH_INTERVAL, excludes today's
@@ -784,15 +811,15 @@ function classifyHolding(md, item, ta, macroTa) {
     if (athPct <= DCA_EXTREME_PCT) {
       signal = 'WAIT'; colorKey = 'hold';
       strength = 20;
-      reason = `Extreme discount — statistically cheap, but depth alone isn't a floor and isn't a buy signal. Checking for reversal confirmation below.`;
+      reason = `Extreme discount — statistically cheap, but depth alone isn't a floor and isn't a buy signal. Checking below for a capital-efficient entry point.`;
     } else if (athPct <= DCA_DEEP_PCT) {
       signal = 'WAIT'; colorKey = 'hold';
       strength = 30;
-      reason = `Deep discount, classic DCA territory by history — but discount alone doesn't confirm the fall has stopped. Checking for reversal confirmation below.`;
+      reason = `Deep discount, classic DCA territory by history — but discount alone doesn't confirm the fall has stopped. Checking below for a capital-efficient entry point.`;
     } else if (athPct <= DCA_MODERATE_PCT) {
       signal = 'WAIT'; colorKey = 'hold';
       strength = 25;
-      reason = `Meaningful discount, but not yet a confirmed add. Checking for reversal confirmation below.`;
+      reason = `Meaningful discount, but not yet a confirmed add. Checking below for a capital-efficient entry point.`;
     } else if (athPct <= DCA_WATCH_PCT) {
       signal = 'HOLD'; colorKey = 'hold';
       strength = 35;
@@ -872,7 +899,6 @@ function classifyHolding(md, item, ta, macroTa) {
     signal, colorKey, strength, reason,
     volume, mcap, rank, athPct, athValue, athDate, atlValue, atlDate, low24h, high24h, volMcapRatio,
     change24h: md.change_24h, change7d: md.change_7d, change30d: md.change_30d,
-    nearTarget: !!(nearTarget && item.target),
     rsi: ta?.rsi ?? null,
     emaLong: ta?.emaLong ?? null,
     rollingLow: ta?.rollingLow ?? null,
@@ -1417,7 +1443,7 @@ function handleRowExpansion(tr, item, forceReExpand = false) {
         <div class="detail-item"><div class="label">MCap Rank</div><div class="value">${ta.rank == null ? '—' : '#' + ta.rank}</div></div>
       </div>
 
-      <div class="detail-group-title">Technical Confirmation${ta.taTimestamp == null ? '' : (() => { const ageHrs = (Date.now() - ta.taTimestamp) / 3600000; const stale = ageHrs >= 24; return ` <span style="font-weight:400;color:${stale ? 'var(--sell)' : 'var(--muted-2)'}">· TA as of ${ageHrs < 1 ? '<1h ago' : ageHrs < 48 ? Math.round(ageHrs) + 'h ago' : Math.round(ageHrs / 24) + 'd ago'}${stale ? ' (stale — refresh may be failing)' : ''}</span>`; })()}</div>
+      <div class="detail-group-title">Technical Confirmation${ta.taTimestamp == null ? '' : (() => { const stale = (Date.now() - ta.taTimestamp) / 3600000 >= 24; return ` <span style="font-weight:400;color:${stale ? 'var(--sell)' : 'var(--muted-2)'}">· TA as of ${formatRelativeAge(ta.taTimestamp)}${stale ? ' (stale — refresh may be failing)' : ''}</span>`; })()}</div>
       <div class="detail-grid">
         <div class="detail-item"><div class="label">Conviction</div><div class="value">${ta.strength}%</div></div>
         <div class="detail-item"><div class="label">RSI (14)</div><div class="value ${ta.rsi != null && ta.rsi <= RSI_OVERSOLD ? 'buy' : ta.rsi != null && ta.rsi >= RSI_OVERBOUGHT ? 'sell' : ''}">${ta.rsi == null ? '—' : ta.rsi.toFixed(0)}</div></div>
@@ -1584,6 +1610,7 @@ if (isApiReachable) {
   recomputeHoldingSignals();
   fetchTaForPortfolio(startTaIds);
   scheduleTaSweep();
+  scheduleAlignedTaRefresh();
 } else {
   pricesCache = JSON.parse(localStorage.getItem('shortfall_prices') || '{}');
   marketDataCache = JSON.parse(localStorage.getItem('shortfall_market_data') || '{}');
