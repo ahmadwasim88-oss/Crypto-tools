@@ -40,7 +40,7 @@ html, body {
   max-width: 100%;
   overflow-x: hidden;
 }
-body { padding: 8px 8px calc(40px + env(safe-area-inset-bottom, 0px)); }
+body { padding: 8px 8px calc(52px + env(safe-area-inset-bottom, 0px)); }
 .app { max-width: min(100%, 1400px); margin: 0 auto; }
 header {
   display: flex;
@@ -88,8 +88,6 @@ header {
 .pill.error .dot { background: var(--sell); }
 .pill.info { color: var(--muted); background: var(--panel-2); }
 .pill.info .dot { background: var(--muted); }
-.freshness-footer { display: flex; align-items: center; gap: 7px; font-family: var(--font-mono); font-size: 10px; color: var(--muted-2); padding-bottom: 5px; margin-bottom: 5px; border-bottom: 1px solid var(--border); }
-.freshness-footer .ff-sep { opacity: 0.4; }
 .toolbar {
   display: flex;
   gap: 8px;
@@ -325,27 +323,38 @@ td[data-col="coin"] { max-width: 44px; overflow: hidden; text-overflow: ellipsis
   position: fixed;
   bottom: 0; left: 0; width: 100%;
   z-index: 50;
-  padding: 6px 14px calc(6px + env(safe-area-inset-bottom, 0px));
+  padding: 9px 14px calc(9px + env(safe-area-inset-bottom, 0px));
   background: rgba(6,10,15,0.97);
   border-top: 1px solid var(--border);
   backdrop-filter: blur(6px);
-  font-family: var(--font-mono);
-  pointer-events: none;
 }
-.activity-message {
-  font-size: 10.5px;
-  color: var(--muted);
+.status-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted-2);
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
-  transition: opacity 0.4s ease;
 }
-.activity-message .ts { color: var(--muted-2); font-weight: 600; margin-right: 6px; }
-.activity-message.ok { color: var(--buy); }
-.activity-message.warn { color: var(--trim); }
-.activity-message.error { color: var(--sell); }
-.activity-message.info { color: var(--muted); }
-.activity-message.muted { opacity: 0.4; }
+.status-line .sl-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--muted-2);
+  flex-shrink: 0;
+  transition: background 0.3s ease, box-shadow 0.3s ease;
+}
+.status-line span#statusLineText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color 0.3s ease;
+}
+.status-line.ok .sl-dot { background: var(--buy); box-shadow: 0 0 6px rgba(47,213,118,0.6); }
+.status-line.ok span#statusLineText { color: var(--buy); }
+.status-line.warn .sl-dot { background: var(--trim); box-shadow: 0 0 6px rgba(232,166,59,0.6); }
+.status-line.warn span#statusLineText { color: var(--trim); }
+.status-line.error .sl-dot { background: var(--sell); box-shadow: 0 0 6px rgba(255,92,114,0.6); }
+.status-line.error span#statusLineText { color: var(--sell); }
 </style>
 </head>
 <body>
@@ -397,15 +406,15 @@ td[data-col="coin"] { max-width: 44px; overflow: hidden; text-overflow: ellipsis
 </div>
 
 <div id="activityLogContainer" class="activity-log-container">
-  <div class="freshness-footer"><span id="lastPriceUpdate">Prices —</span><span class="ff-sep">·</span><span id="lastTaUpdate">TA —</span></div>
-  <div id="activityLog"></div>
+  <div id="statusLine" class="status-line"><span class="sl-dot"></span><span id="statusLineText">Prices — · TA —</span></div>
 </div>
 
 <script defer>
 (async function () {
 
 const currentStatus   = document.getElementById('currentStatus');
-const activityLog     = document.getElementById('activityLog');
+const statusLine      = document.getElementById('statusLine');
+const statusLineText  = document.getElementById('statusLineText');
 const symbolInput     = document.getElementById('symbolInput');
 const addBtn          = document.getElementById('addBtn');
 const tableBody       = document.getElementById('tableBody');
@@ -413,8 +422,6 @@ const gainHeader      = document.getElementById('gainSortHeader');
 const signalHeader    = document.getElementById('signalSortHeader');
 const priceHeader     = document.getElementById('priceSortHeader');
 const suggestBox      = document.getElementById('suggestBox');
-const lastPriceUpdateEl = document.getElementById('lastPriceUpdate');
-const lastTaUpdateEl  = document.getElementById('lastTaUpdate');
 const gainSortArrow   = document.getElementById('gainSortArrow');
 const signalSortArrow = document.getElementById('signalSortArrow');
 const priceSortArrow  = document.getElementById('priceSortArrow');
@@ -425,6 +432,7 @@ const API_BASE = 'https://api.coingecko.com/api/v3';
 const PRICE_REFRESH_INTERVAL = 2 * 60000;
 const API_RECHECK_INTERVAL   = 0.5 * 60000;
 const ACTIVITY_TIMEOUT       = 6000;
+const ACTIVITY_TIMEOUT_ALERT = 12000; // warnings/errors linger longer before reverting to ambient
 const MAX_IDS_PER_PRICE_CALL = 90;
 
 const CACHE_KEY      = 'shortfall_coin_list';
@@ -481,7 +489,6 @@ let portfolioMap = {};
 let expandedRowId = null;
 let refreshPriceTimer = null;
 let recheckTimer = null;
-let activityTimer = null;
 let coinListLoaded = false;
 
 let lastPriceTime = parseInt(localStorage.getItem('shortfall_prices_time') || '0', 10);
@@ -532,9 +539,18 @@ function buildPortfolioMap() {
   saved.forEach(item => { portfolioMap[item.id] = item; });
 }
 
+let ambientStatusText = 'Prices — · TA —';
+let statusEventActive = false;
+let statusEventTimer = null;
+
+function renderAmbientStatus() {
+  statusLineText.textContent = ambientStatusText;
+  statusLine.className = 'status-line';
+}
+
 function updateScheduledStatus() {
-  lastPriceUpdateEl.textContent = `Prices ${formatTime(lastPriceTime)}`;
-  lastTaUpdateEl.textContent = `TA ${lastTaTime ? formatTime(lastTaTime) : 'loading…'}`;
+  ambientStatusText = `Prices ${formatTime(lastPriceTime)} · TA ${lastTaTime ? formatTime(lastTaTime) : 'loading…'}`;
+  if (!statusEventActive) renderAmbientStatus();
 }
 
 function setCurrentStatus(text, type = 'info') {
@@ -542,13 +558,18 @@ function setCurrentStatus(text, type = 'info') {
   currentStatus.className = 'pill ' + type;
 }
 
+// A single line that defaults to ambient freshness info, but briefly interrupts itself to surface a
+// notable event (with its own color), then automatically reverts to the ambient state — instead of
+// keeping a scrolling history, which added visual weight without earning its keep for a personal tool.
 function setActivityStatus(text, type = 'info') {
-  if (activityTimer) clearTimeout(activityTimer);
-  activityLog.innerHTML = `<div class="activity-message ${type}"><span class="ts">${formatLogTime()}</span>${text}</div>`;
-  activityTimer = setTimeout(() => {
-    const el = activityLog.firstElementChild;
-    if (el) el.classList.add('muted');
-  }, ACTIVITY_TIMEOUT);
+  if (statusEventTimer) clearTimeout(statusEventTimer);
+  statusEventActive = true;
+  statusLineText.textContent = `${formatLogTime()} — ${text}`;
+  statusLine.className = `status-line ${type}`;
+  statusEventTimer = setTimeout(() => {
+    statusEventActive = false;
+    renderAmbientStatus();
+  }, (type === 'warn' || type === 'error') ? ACTIVITY_TIMEOUT_ALERT : ACTIVITY_TIMEOUT);
 }
 
 
@@ -666,7 +687,6 @@ async function fetchTaForPortfolio(ids, { force = false } = {}) {
   if (recomputed > 0) {
     saveTaData();
     recomputeHoldingSignals();
-    updateScheduledStatus();
     updatePricesInTable();
     setActivityStatus(`Re-applied updated signal logic to ${recomputed} coin(s).`, 'ok');
   }
@@ -680,7 +700,6 @@ async function fetchTaForPortfolio(ids, { force = false } = {}) {
   });
   if (!stale.length || taFetchInFlight) return;
   taFetchInFlight = true;
-  setActivityStatus(`Fetching TA history for ${stale.length} coin(s)…`, 'info');
   let updated = 0, auditFailures = 0;
   for (const id of stale) {
     const closes = await fetchTaHistory(id);
@@ -702,8 +721,8 @@ async function fetchTaForPortfolio(ids, { force = false } = {}) {
     lastTaTime = Date.now();
     localStorage.setItem('shortfall_ta_time', lastTaTime);
     recomputeHoldingSignals();
-    updateScheduledStatus();
     updatePricesInTable();
+    updateScheduledStatus();
   }
   setActivityStatus(`TA history updated (${updated}/${stale.length}).${auditFailures ? ` ${auditFailures} discarded on audit failure.` : ''}`, updated > 0 ? 'ok' : 'warn');
   taFetchInFlight = false;
@@ -891,9 +910,9 @@ function classifyHolding(md, item, ta, macroTa) {
   };
 }
 
+let apiWasDown = false;
 async function checkApiStatus() {
   try {
-    setActivityStatus('Checking CoinGecko API…', 'info');
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000);
     const start = performance.now();
@@ -901,7 +920,7 @@ async function checkApiStatus() {
     clearTimeout(timeoutId);
     if (!res.ok) throw new Error(`HTTP_ERROR:${res.status}`);
     setCurrentStatus(`Live · ${(performance.now() - start).toFixed(0)}ms`, 'ok');
-    setActivityStatus('API reachable.', 'ok');
+    if (apiWasDown) { setActivityStatus('API reachable again.', 'ok'); apiWasDown = false; }
     return true;
   } catch (err) {
     const message = err.message || '';
@@ -912,6 +931,7 @@ async function checkApiStatus() {
     else if (/5\d{2}/.test(message)) text = 'API down — using cache';
     setCurrentStatus(text, 'error');
     setActivityStatus(text + '.', 'error');
+    apiWasDown = true;
     return false;
   }
 }
@@ -1026,7 +1046,6 @@ async function fetchPrices(ids) {
   const chunks = [];
   for (let i = 0; i < validIds.length; i += MAX_IDS_PER_PRICE_CALL) chunks.push(validIds.slice(i, i + MAX_IDS_PER_PRICE_CALL));
 
-  setActivityStatus(`Fetching prices for ${validIds.length} coin(s)…`, 'info');
   const results = await Promise.all(chunks.map(chunk => fetchPricesChunk(chunk)));
   const updated = results.reduce((a, r) => a + r.updated, 0);
 
@@ -1035,10 +1054,10 @@ async function fetchPrices(ids) {
     lastPriceTime = Date.now();
     localStorage.setItem('shortfall_prices_time', lastPriceTime);
     savePrices();
+    updateScheduledStatus();
   }
 
   if (updated === validIds.length) {
-    setActivityStatus('Prices updated.', 'ok');
     return true;
   } else if (updated > 0) {
     setActivityStatus(`Prices partially updated (${updated}/${validIds.length}).`, 'warn');
@@ -1067,7 +1086,6 @@ function scheduleApiRecheck() {
       const ids = saved.map(s => s.id).filter(Boolean);
       await fetchPrices(ids);
       recomputeHoldingSignals();
-      updateScheduledStatus();
       applyCurrentSort();
     } else {
       scheduleApiRecheck();
@@ -1081,7 +1099,6 @@ async function schedulePriceFetch() {
   if (isApiReachable) {
     await fetchPrices(ids);
     recomputeHoldingSignals();
-    updateScheduledStatus();
     updatePricesInTable();
     const taIds = [...new Set([...ids, 'bitcoin'])];
     fetchTaForPortfolio(taIds); // no-op unless the internal boundary-aware staleness check says otherwise
@@ -1326,7 +1343,6 @@ function updatePricesInTable() {
       signalCell.innerHTML = html;
     }
   });
-  updateScheduledStatus();
   if (shouldReSort) applyCurrentSort();
   else if (expandedRowId) {
     const activeChart = document.getElementById(`chart-container-${expandedRowId}`);
@@ -1588,6 +1604,7 @@ if (isApiReachable) {
   refreshPriceTimer = setInterval(schedulePriceFetch, PRICE_REFRESH_INTERVAL);
   await fetchPrices(startIds);
   recomputeHoldingSignals();
+  updateScheduledStatus();
   fetchTaForPortfolio(startTaIds);
 } else {
   pricesCache = JSON.parse(localStorage.getItem('shortfall_prices') || '{}');
@@ -1597,7 +1614,6 @@ if (isApiReachable) {
 }
 
 applyCurrentSort();
-updateScheduledStatus();
 
 })();
 </script>
