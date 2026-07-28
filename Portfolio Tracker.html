@@ -461,7 +461,7 @@ const API_BASE = 'https://api.coingecko.com/api/v3';
 const PRICE_REFRESH_INTERVAL = 2 * 60000;
 const API_RECHECK_INTERVAL   = 0.5 * 60000;
 const ACTIVITY_TIMEOUT       = 6000;
-const ACTIVITY_TIMEOUT_ALERT = 12000; // warnings/errors linger longer before reverting to ambient
+const ACTIVITY_TIMEOUT_ALERT = 12000;
 const MAX_IDS_PER_PRICE_CALL = 90;
 
 const CACHE_KEY      = 'shortfall_coin_list';
@@ -480,13 +480,13 @@ const DCA_DEEP_PCT = -70;
 const DCA_MODERATE_PCT = -40;
 const DCA_DIP_WINDOW_DAYS = 90;
 const DCA_DIP_NEAR_PCT = 3;
-const DCA_24H_DROP_LOOKBACK_DAYS = 20;   // window used to measure this coin's own typical daily swing
-const DCA_24H_DROP_MULT = 1.2;           // required 24h drop = this many x the coin's average daily move
-const DCA_24H_DROP_FLOOR_PCT = -3;       // never require less than a 3% drop, even for very calm coins
-const DCA_24H_DROP_CEIL_PCT = -15;       // never require more than a 15% drop, even for very wild coins
-const DCA_GAP_MULT = 1.5;                // required gap below last DCA level = this many x the coin's average daily move
-const DCA_GAP_FLOOR_PCT = 2;             // never require less than a 2% gap below the last DCA level, even for calm coins
-const DCA_GAP_CEIL_PCT = 10;             // never require more than a 10% gap below the last DCA level, even for wild coins
+const DCA_24H_DROP_LOOKBACK_DAYS = 20;
+const DCA_24H_DROP_MULT = 1.2;
+const DCA_24H_DROP_FLOOR_PCT = -3;
+const DCA_24H_DROP_CEIL_PCT = -15;
+const DCA_GAP_MULT = 3.0;
+const DCA_GAP_FLOOR_PCT = 5;
+const DCA_GAP_CEIL_PCT = 12;
 const STREAK_GRACE_PERIOD_MS = 36 * 60 * 60000;
 const REL_STRENGTH_WINDOW_DAYS = 14;
 const EMA_TREND_FAST_SHORT = 20, EMA_TREND_FAST_LONG = 50;
@@ -497,7 +497,7 @@ const DCA_WATCH_PCT = -20;
 
 const CRASH_7D_PCT = -15;
 
-const TA_ALIGN_BUFFER_MS = 15 * 60000; // let CoinGecko's backend finalize the new daily candle before we trust it
+const TA_ALIGN_BUFFER_MS = 15 * 60000;
 const TA_HISTORY_DAYS = 365;
 const TA_FETCH_DELAY_MS = 1500;
 
@@ -516,7 +516,7 @@ let pricesCache       = JSON.parse(localStorage.getItem('shortfall_prices') || '
 let marketDataCache   = JSON.parse(localStorage.getItem('shortfall_market_data') || '{}');
 let holdingSignalCache = JSON.parse(localStorage.getItem('shortfall_holding_signals') || '{}');
 let dcaStreakCache = JSON.parse(localStorage.getItem('shortfall_dca_streaks') || '{}');
-let dcaLogCache = JSON.parse(localStorage.getItem('shortfall_dca_log') || '{}'); // user-logged actual DCA prices, keyed by coin id — never auto-written
+let dcaLogCache = JSON.parse(localStorage.getItem('shortfall_dca_log') || '{}');
 let taCache            = JSON.parse(localStorage.getItem('shortfall_ta_data') || '{}');
 
 let coinList = [];
@@ -547,9 +547,6 @@ const formatINR = (n, maxDecimals = 2, compact = false) => {
   return '₹' + Number(n).toLocaleString('en-IN', { minimumFractionDigits: maxDecimals, maximumFractionDigits: maxDecimals });
 };
 
-// Adaptive precision matching CoinGecko/exchange convention: cheaper coins need more decimals to be
-// meaningful, pricier coins need fewer. Compute once per coin from CMP and reuse for every price field
-// on that coin's row/card so nothing shows a different decimal count than its neighbor.
 const pricePrecisionFor = (price) => {
   const abs = Math.abs(price ?? 0);
   if (abs >= 100) return 2;
@@ -596,9 +593,6 @@ function setCurrentStatus(text, type = 'info') {
   currentStatus.className = 'pill ' + type;
 }
 
-// A single line that defaults to ambient freshness info, but briefly interrupts itself to surface a
-// notable event (with its own color), then automatically reverts to the ambient state — instead of
-// keeping a scrolling history, which added visual weight without earning its keep for a personal tool.
 function setActivityStatus(text, type = 'info') {
   if (statusEventTimer) clearTimeout(statusEventTimer);
   statusEventActive = true;
@@ -651,9 +645,6 @@ function calcReturnPct(closes, days) {
   return (end - start) / start * 100;
 }
 
-// Calendar date (Asia/Kolkata) for a timestamp — used to count streak days by actual
-// calendar day rather than raw ms/86400000, which drifts depending on what time of day
-// a check happens to land relative to when the streak first started.
 function istDateStr(ts) {
   return new Date(ts).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
 }
@@ -661,8 +652,6 @@ function daysBetweenDateStrs(a, b) {
   return Math.round((new Date(b + 'T00:00:00Z') - new Date(a + 'T00:00:00Z')) / 86400000);
 }
 
-// This coin's own average daily move (%) over a trailing window — used as a volatility
-// yardstick so the "sharp 24h drop" gate scales to the coin instead of a flat percentage.
 function calcAvgDailyMovePct(closes, days) {
   if (!closes || closes.length < days + 1) return null;
   const slice = closes.slice(-(days + 1));
@@ -713,12 +702,6 @@ function auditTa(ta) {
   return fields.every(v => v == null || !isNaN(v));
 }
 
-// True if the most recent daily TA-update window (shortly after each UTC-midnight candle close) has
-// passed since `ts`. This is checked fresh on every price refresh (self-healing) instead of relying on
-// a scheduled timer firing at an exact moment — a setTimeout targeting a precise clock time can silently
-// get dropped if the tab is backgrounded/throttled, and then there's no way to recover until the next
-// scheduled attempt. Re-checking "has the window passed?" on every 2-minute price tick instead means a
-// missed window is caught and corrected on the very next tick, not hours later.
 function taBoundaryPassedSince(ts) {
   if (!ts) return true;
   const now = Date.now();
@@ -790,18 +773,6 @@ async function fetchTaForPortfolio(ids, { force = false } = {}) {
 }
 
 
-// --- Price pipeline convention ---
-// CLOSE-based (from ta.closes / macroTa.closes, refreshed once daily shortly after each UTC candle close
-// via the boundary-aware check on every price tick — see taBoundaryPassedSince — excludes today's
-// still-forming candle): RSI, EMA200 (for CMP->EMA200), EMA20/50 (Sentiment), relative-strength-vs-BTC
-// returns, ta.rollingLow itself. These intentionally never mix in live price — that's what makes them
-// stable, closed-candle indicators rather than jittery intraday ones.
-// LIVE-based (pricesCache, refreshed every PRICE_REFRESH_INTERVAL): cur (CMP), and anything whose whole
-// job is "where does price sit right now" — athValue/athPct, atlValue, effectiveLow, the 24h price bar.
-// These take Math.max/min(historical value, cur) so a live move is reflected immediately instead of
-// waiting for the next TA refresh or CoinGecko snapshot to catch up.
-// Never mix the two inside the same close-based calculation (e.g. RSI must stay pure-close) — only the
-// handful of "how close is price to X right now" metrics above are meant to blend live + historical.
 function classifyHolding(md, item, ta, macroTa) {
   if (!md) {
     return {
@@ -899,7 +870,7 @@ function classifyHolding(md, item, ta, macroTa) {
     ? Math.min(ta.rollingLow, cur, (atlWithinWindow && atlValue != null) ? atlValue : Infinity)
     : null;
 
-  const isDiscountCandidate = signal === 'WAIT' && athPct != null && athPct <= DCA_MODERATE_PCT;
+  const isDiscountCandidate = signal === 'WAIT';
   let dcaStreakDay = null;
   if (isDiscountCandidate) {
     const relStrength = relStrengthVsBtc;
@@ -926,17 +897,12 @@ function classifyHolding(md, item, ta, macroTa) {
         if (!existing) {
           dcaStreakCache[item.id] = { startedDateStr: todayStr, lastAtLowAt: Date.now() };
         } else {
-          // Migrate any pre-existing entry that only has the old raw-timestamp shape.
           if (!existing.startedDateStr) existing.startedDateStr = istDateStr(existing.startedAt ?? Date.now());
           existing.lastAtLowAt = Date.now();
         }
         saveDcaStreaks();
         dcaStreakDay = daysBetweenDateStrs(dcaStreakCache[item.id].startedDateStr, todayStr) + 1;
 
-        // Gap-efficiency gate: only compares against a price YOU explicitly logged via "Log DCA" —
-        // never auto-captured from a signal fire, since firing ≠ you actually buying, and you may
-        // buy at a different price than CMP-at-fire-time or not buy at all. No log yet → no gate,
-        // fires ACCUMULATE every day the conditions hold, same as before this feature existed.
         const lastLog = dcaLogCache[item.id] ?? null;
         const dynGapPct = Math.max(
           DCA_GAP_FLOOR_PCT,
@@ -951,19 +917,12 @@ function classifyHolding(md, item, ta, macroTa) {
           const gapNote = lastLog == null ? '' : ` ${gapPct.toFixed(1)}% below your last logged DCA (${formatINR(lastLog.price, pricePrecisionFor(lastLog.price))} on ${lastLog.dateStr}) — a materially better entry, not the same level again.`;
           reason = `Price is near its own ${ta.rollingLowWindowDays}-day low with RSI also oversold and a sharp 24h drop (${change24h.toFixed(1)}%, vs its own ${dyn24hThreshold.toFixed(1)}% threshold) — all three true right now, not a reversal prediction, just a capital-efficient entry point. ${dcaStreakDay === 1 ? 'First flagged today.' : `First flagged ${dcaStreakDay} days ago and still holding — this is a continuation, not a new event.`}${gapNote}${relStrengthNote}`;
         } else {
-          // Underlying add conditions still hold, but price hasn't moved meaningfully past your
-          // last logged DCA — hold back at WAIT rather than flag the same level again. If you never
-          // log the buy, this branch never triggers — logging is what turns the gate on.
-          // gapPct can be negative here (CMP sitting above the logged price, not below it) — say so
-          // correctly rather than always phrasing it as "below".
           const positionNote = gapPct >= 0
             ? `price is only ${gapPct.toFixed(1)}% below your last logged DCA (${formatINR(lastLog.price, pricePrecisionFor(lastLog.price))} on ${lastLog.dateStr})`
             : `price is actually ${Math.abs(gapPct).toFixed(1)}% above your last logged DCA (${formatINR(lastLog.price, pricePrecisionFor(lastLog.price))} on ${lastLog.dateStr}), not below it`;
           reason = `Add conditions (${ta.rollingLowWindowDays}-day low + RSI oversold + sharp 24h drop) are still true — day ${dcaStreakDay} of this dip — but ${positionNote}. This coin's own volatility currently calls for ≥${dynGapPct.toFixed(1)}% below that level before another add counts as a materially better entry, so this is being held at WAIT to avoid stacking at nearly the same price.${relStrengthNote}`;
         }
       } else {
-        // Only clear the streak once it's genuinely been more than a day since it last qualified —
-        // a brief gap (price refreshes every 2 min, TA every 4h, plus normal overnight gaps) shouldn't wipe it.
         const existing = dcaStreakCache[item.id];
         if (existing && (Date.now() - existing.lastAtLowAt) > STREAK_GRACE_PERIOD_MS) {
           delete dcaStreakCache[item.id];
@@ -981,7 +940,11 @@ function classifyHolding(md, item, ta, macroTa) {
       reason = `Not enough price history loaded yet to judge proximity to its recent-range low.`;
     }
   } else {
-    if (dcaStreakCache[item.id]) { delete dcaStreakCache[item.id]; saveDcaStreaks(); }
+    const existing = dcaStreakCache[item.id];
+    if (existing && (Date.now() - existing.lastAtLowAt) > STREAK_GRACE_PERIOD_MS) {
+      delete dcaStreakCache[item.id];
+      saveDcaStreaks();
+    }
   }
 
   const nearTarget = item.target && cur != null ? (cur >= item.target * (1 - TARGET_PROXIMITY_PCT / 100)) : false;
@@ -1199,7 +1162,7 @@ async function schedulePriceFetch() {
     recomputeHoldingSignals();
     updatePricesInTable();
     const taIds = [...new Set([...ids, 'bitcoin'])];
-    fetchTaForPortfolio(taIds); // no-op unless the internal boundary-aware staleness check says otherwise
+    fetchTaForPortfolio(taIds);
   } else {
     pricesCache = JSON.parse(localStorage.getItem('shortfall_prices') || '{}');
     updatePricesInTable();
@@ -1254,7 +1217,7 @@ function logDcaLevel(id, symbol) {
   const cur = pricesCache[id] ?? marketDataCache[id]?.current_price ?? null;
   const suggested = cur != null ? cur.toString() : '';
   const input = prompt(`Log the price you actually DCA'd ${symbol} at (defaults to current price — edit if you bought at a different price):`, suggested);
-  if (input === null) return; // cancelled
+  if (input === null) return;
   const price = parseFloat(input);
   if (!price || price <= 0) { alert('Enter a valid price.'); return; }
   dcaLogCache[id] = { price, dateStr: istDateStr(Date.now()), timestamp: Date.now() };
@@ -1523,9 +1486,6 @@ function handleRowExpansion(tr, item, forceReExpand = false) {
     : 50;
   const atlIsCheap = pctAboveAtl != null && pctAboveAtl <= ATL_PROXIMITY_PCT;
   const lastLog = dcaLogCache[item.id] ?? null;
-  // The "log this DCA" action only makes sense while ACCUMULATE is actually active — showing it on
-  // WAIT/HOLD/etc rows offers an action that has nothing to gate. A leftover log from an earlier
-  // streak still needs to stay clearable even after the signal has moved on, so that part isn't gated.
   const showLogAction = ta.signal === 'ACCUMULATE';
   const dcaLogHtml = (!showLogAction && !lastLog) ? '' : `
     <div class="dca-log-row">
