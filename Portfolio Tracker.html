@@ -821,6 +821,7 @@ function classifyHolding(md, item, ta, macroTa) {
   const atRisk = !deadLiquidity && microcap && poorRank;
 
   let signal, colorKey, strength, reason;
+  const depth = athPct != null ? Math.abs(athPct) : null;
 
   if (deadLiquidity) {
     signal = 'EXIT'; colorKey = 'sell';
@@ -837,27 +838,26 @@ function classifyHolding(md, item, ta, macroTa) {
     strength = 50;
     reason = `Micro-cap (${formatINR(mcap)}${rank ? `, rank #${rank}` : ', unranked'}) with real survival risk. Not dead, so not an exit call — but not a place to add either.`;
   } else if (athPct != null) {
-    const depth = Math.abs(athPct);
     if (athPct <= DCA_EXTREME_PCT) {
       signal = 'WAIT'; colorKey = 'hold';
       strength = 20;
-      reason = `Extreme discount — statistically cheap, but depth alone isn't a floor and isn't a buy signal. Checking below for a capital-efficient entry point.`;
+      reason = `${depth.toFixed(0)}% below its all-time high — statistically extreme, but depth alone isn't a floor and isn't a buy signal. Checking below for a capital-efficient entry point.`;
     } else if (athPct <= DCA_DEEP_PCT) {
       signal = 'WAIT'; colorKey = 'hold';
       strength = 30;
-      reason = `Deep discount, classic DCA territory by history — but discount alone doesn't confirm the fall has stopped. Checking below for a capital-efficient entry point.`;
+      reason = `${depth.toFixed(0)}% below its all-time high — deep discount, classic DCA territory by history, but discount alone doesn't confirm the fall has stopped. Checking below for a capital-efficient entry point.`;
     } else if (athPct <= DCA_MODERATE_PCT) {
       signal = 'WAIT'; colorKey = 'hold';
       strength = 25;
-      reason = `Meaningful discount, but not yet a confirmed add. Checking below for a capital-efficient entry point.`;
+      reason = `${depth.toFixed(0)}% below its all-time high — a meaningful discount, but not yet a confirmed add. Checking below for a capital-efficient entry point.`;
     } else if (athPct <= DCA_WATCH_PCT) {
       signal = 'HOLD'; colorKey = 'hold';
       strength = 35;
-      reason = `Not a deep enough discount yet to call this a DCA opportunity.`;
+      reason = `Only ${depth.toFixed(0)}% below its all-time high — not a deep enough discount yet to call this a DCA opportunity.`;
     } else {
       signal = 'TRIM'; colorKey = 'trim';
       strength = 55;
-      reason = `Close to its all-time high — closer to a profit-taking zone than a buying one.`;
+      reason = `Just ${depth.toFixed(0)}% below its all-time high — closer to a profit-taking zone than a buying one.`;
     }
   } else {
     signal = 'HOLD'; colorKey = 'hold';
@@ -914,13 +914,14 @@ function classifyHolding(md, item, ta, macroTa) {
         if (gapCleared) {
           signal = 'ACCUMULATE'; colorKey = 'dca';
           strength = Math.round(Math.min(60, strength + 30) + relStrengthBonus);
-          const gapNote = lastLog == null ? '' : ` ${gapPct.toFixed(1)}% below your last logged DCA (${formatINR(lastLog.price, pricePrecisionFor(lastLog.price))} on ${lastLog.dateStr}) — a materially better entry, not the same level again.`;
-          reason = `Price is near its own ${ta.rollingLowWindowDays}-day low with RSI also oversold and a sharp 24h drop (${change24h.toFixed(1)}%, vs its own ${dyn24hThreshold.toFixed(1)}% threshold) — all three true right now, not a reversal prediction, just a capital-efficient entry point. ${dcaStreakDay === 1 ? 'First flagged today.' : `First flagged ${dcaStreakDay} days ago and still holding — this is a continuation, not a new event.`}${gapNote}${relStrengthNote}`;
+          const gapNote = lastLog == null ? '' : ` It's also ${gapPct.toFixed(1)}% below your last logged DCA (${formatINR(lastLog.price, pricePrecisionFor(lastLog.price))} on ${lastLog.dateStr}) — a materially better entry, not the same level again.`;
+          const streakNote = dcaStreakDay === 1 ? 'First flagged today.' : `First flagged ${dcaStreakDay} days ago and still holding — a continuation, not a new event.`;
+          reason = `${depth.toFixed(0)}% below its all-time high, ${aboveLow.toFixed(1)}% above its ${ta.rollingLowWindowDays}-day low, RSI at ${ta.rsi.toFixed(0)} (oversold), and down ${change24h.toFixed(1)}% today (past its own ${dyn24hThreshold.toFixed(1)}% volatility threshold) — every condition met together, not a reversal call, just a capital-efficient entry. ${streakNote}${gapNote}${relStrengthNote}`;
         } else {
           const positionNote = gapPct >= 0
             ? `price is only ${gapPct.toFixed(1)}% below your last logged DCA (${formatINR(lastLog.price, pricePrecisionFor(lastLog.price))} on ${lastLog.dateStr})`
             : `price is actually ${Math.abs(gapPct).toFixed(1)}% above your last logged DCA (${formatINR(lastLog.price, pricePrecisionFor(lastLog.price))} on ${lastLog.dateStr}), not below it`;
-          reason = `Add conditions (${ta.rollingLowWindowDays}-day low + RSI oversold + sharp 24h drop) are still true — day ${dcaStreakDay} of this dip — but ${positionNote}. This coin's own volatility currently calls for ≥${dynGapPct.toFixed(1)}% below that level before another add counts as a materially better entry, so this is being held at WAIT to avoid stacking at nearly the same price.${relStrengthNote}`;
+          reason = `Still meets every add condition — ${depth.toFixed(0)}% below its all-time high, near its ${ta.rollingLowWindowDays}-day low, RSI oversold at ${ta.rsi.toFixed(0)}, down ${change24h.toFixed(1)}% today — day ${dcaStreakDay} of this dip. But ${positionNote}. This coin's own volatility calls for ≥${dynGapPct.toFixed(1)}% below that level before another add counts as a materially better entry, so it's held at WAIT to avoid stacking at nearly the same price.${relStrengthNote}`;
         }
       } else {
         const existing = dcaStreakCache[item.id];
@@ -929,11 +930,11 @@ function classifyHolding(md, item, ta, macroTa) {
           saveDcaStreaks();
         }
         if (nearLow && rsiOversold && !sharpDrop24h) {
-          reason = `Near its ${ta.rollingLowWindowDays}-day low with RSI oversold too, but the last 24h move (${change24h == null ? '—' : change24h.toFixed(1) + '%'}) isn't a sharp enough drop yet — this coin's own volatility currently calls for ≤ ${dyn24hThreshold.toFixed(1)}% in a day before flagging an add.`;
+          reason = `${depth.toFixed(0)}% below its all-time high and near its ${ta.rollingLowWindowDays}-day low with RSI oversold at ${ta.rsi.toFixed(0)} too — but today's move (${change24h == null ? '—' : change24h.toFixed(1) + '%'}) isn't a sharp enough drop yet. This coin's own volatility calls for ≤${dyn24hThreshold.toFixed(1)}% in a day before flagging an add.`;
         } else if (nearLow && !rsiOversold) {
-          reason = `Near its ${ta.rollingLowWindowDays}-day low, but RSI isn't oversold yet — this flag needs price, RSI, and a sharp 24h drop together to avoid firing on every minor dip.`;
+          reason = `${depth.toFixed(0)}% below its all-time high and near its ${ta.rollingLowWindowDays}-day low, but RSI (${ta.rsi == null ? '—' : ta.rsi.toFixed(0)}) isn't oversold yet — needs price, RSI, and a sharp 24h drop together to avoid firing on every minor dip.`;
         } else {
-          reason = `Not near its ${ta.rollingLowWindowDays}-day low yet (currently ${Math.abs(aboveLow).toFixed(1)}% ${aboveLow >= 0 ? 'above' : 'below'} it) — this only flags an add when price, RSI, and a sharp 24h drop are all at an extreme together.`;
+          reason = `${depth.toFixed(0)}% below its all-time high, but not near its ${ta.rollingLowWindowDays}-day low yet (currently ${Math.abs(aboveLow).toFixed(1)}% ${aboveLow >= 0 ? 'above' : 'below'} it) — only flags an add when price, RSI, and a sharp 24h drop are all at an extreme together.`;
         }
       }
     } else {
