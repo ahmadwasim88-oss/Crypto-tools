@@ -377,7 +377,7 @@ td[data-col="coin"] { max-width: 44px; overflow: hidden; text-overflow: ellipsis
 </div>
 
 <div class="legend">
-  <span><span class="sw" style="background:var(--dca)"></span>Accumulate — near its own 90-day low with RSI also oversold, right now — a capital-efficient entry point, not a reversal call</span>
+  <span><span class="sw" style="background:var(--dca)"></span>Accumulate — near its own 90-day low, RSI also oversold, and a sharp 24h drop relative to its own volatility — all right now — a capital-efficient entry point, not a reversal call</span>
   <span><span class="sw" style="background:var(--hold)"></span>Hold — not discounted enough from its all-time high to be a DCA candidate yet</span>
   <span><span class="sw" style="background:var(--hold)"></span>Wait — meaningfully discounted, but hasn't hit the near-low + oversold-RSI conditions yet</span>
   <span><span class="sw" style="background:var(--trim)"></span>Trim — near its all-time high, or at/above your target</span>
@@ -451,6 +451,10 @@ const DCA_DEEP_PCT = -70;
 const DCA_MODERATE_PCT = -40;
 const DCA_DIP_WINDOW_DAYS = 90;
 const DCA_DIP_NEAR_PCT = 3;
+const DCA_24H_DROP_LOOKBACK_DAYS = 20;   // window used to measure this coin's own typical daily swing
+const DCA_24H_DROP_MULT = 1.2;           // required 24h drop = this many x the coin's average daily move
+const DCA_24H_DROP_FLOOR_PCT = -3;       // never require less than a 3% drop, even for very calm coins
+const DCA_24H_DROP_CEIL_PCT = -15;       // never require more than a 15% drop, even for very wild coins
 const STREAK_GRACE_PERIOD_MS = 36 * 60 * 60000;
 const REL_STRENGTH_WINDOW_DAYS = 14;
 const EMA_TREND_FAST_SHORT = 20, EMA_TREND_FAST_LONG = 50;
@@ -611,6 +615,29 @@ function calcReturnPct(closes, days) {
   const end = closes[closes.length - 1];
   if (start == null || end == null || start === 0) return null;
   return (end - start) / start * 100;
+}
+
+// Calendar date (Asia/Kolkata) for a timestamp — used to count streak days by actual
+// calendar day rather than raw ms/86400000, which drifts depending on what time of day
+// a check happens to land relative to when the streak first started.
+function istDateStr(ts) {
+  return new Date(ts).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+}
+function daysBetweenDateStrs(a, b) {
+  return Math.round((new Date(b + 'T00:00:00Z') - new Date(a + 'T00:00:00Z')) / 86400000);
+}
+
+// This coin's own average daily move (%) over a trailing window — used as a volatility
+// yardstick so the "sharp 24h drop" gate scales to the coin instead of a flat percentage.
+function calcAvgDailyMovePct(closes, days) {
+  if (!closes || closes.length < days + 1) return null;
+  const slice = closes.slice(-(days + 1));
+  let sum = 0, n = 0;
+  for (let i = 1; i < slice.length; i++) {
+    const prev = slice[i - 1], cur = slice[i];
+    if (prev) { sum += Math.abs((cur - prev) / prev * 100); n++; }
+  }
+  return n ? sum / n : null;
 }
 
 function computeTaFromCloses(closes) {
@@ -851,20 +878,30 @@ function classifyHolding(md, item, ta, macroTa) {
       const aboveLow = (cur - effectiveLow) / effectiveLow * 100;
       const nearLow = aboveLow <= DCA_DIP_NEAR_PCT;
       const rsiOversold = ta.rsi != null && ta.rsi <= RSI_OVERSOLD;
-      const atLow = nearLow && rsiOversold;
+      const change24h = md.change_24h;
+      const avgDailyMove = calcAvgDailyMovePct(ta.closes, DCA_24H_DROP_LOOKBACK_DAYS);
+      const dyn24hThreshold = -Math.max(
+        Math.abs(DCA_24H_DROP_FLOOR_PCT),
+        Math.min(Math.abs(DCA_24H_DROP_CEIL_PCT), (avgDailyMove ?? Math.abs(DCA_24H_DROP_FLOOR_PCT)) * DCA_24H_DROP_MULT)
+      );
+      const sharpDrop24h = change24h != null && change24h <= dyn24hThreshold;
+      const atLow = nearLow && rsiOversold && sharpDrop24h;
       if (atLow) {
+        const todayStr = istDateStr(Date.now());
         const existing = dcaStreakCache[item.id];
         if (!existing) {
-          dcaStreakCache[item.id] = { startedAt: Date.now(), lastAtLowAt: Date.now() };
+          dcaStreakCache[item.id] = { startedDateStr: todayStr, lastAtLowAt: Date.now() };
           saveDcaStreaks();
         } else {
+          // Migrate any pre-existing entry that only has the old raw-timestamp shape.
+          if (!existing.startedDateStr) existing.startedDateStr = istDateStr(existing.startedAt ?? Date.now());
           existing.lastAtLowAt = Date.now();
           saveDcaStreaks();
         }
-        dcaStreakDay = Math.floor((Date.now() - dcaStreakCache[item.id].startedAt) / 86400000) + 1;
+        dcaStreakDay = daysBetweenDateStrs(dcaStreakCache[item.id].startedDateStr, todayStr) + 1;
         signal = 'ACCUMULATE'; colorKey = 'dca';
         strength = Math.round(Math.min(60, strength + 30) + relStrengthBonus);
-        reason = `Price is near its own ${ta.rollingLowWindowDays}-day low with RSI also oversold, and both are true right now — not a reversal prediction, just a capital-efficient entry point. ${dcaStreakDay === 1 ? 'First flagged today.' : `First flagged ${dcaStreakDay} days ago and still holding — this is a continuation, not a new event.`}${relStrengthNote}`;
+        reason = `Price is near its own ${ta.rollingLowWindowDays}-day low with RSI also oversold and a sharp 24h drop (${change24h.toFixed(1)}%, vs its own ${dyn24hThreshold.toFixed(1)}% threshold) — all three true right now, not a reversal prediction, just a capital-efficient entry point. ${dcaStreakDay === 1 ? 'First flagged today.' : `First flagged ${dcaStreakDay} days ago and still holding — this is a continuation, not a new event.`}${relStrengthNote}`;
       } else {
         // Only clear the streak once it's genuinely been more than a day since it last qualified —
         // a brief gap (price refreshes every 2 min, TA every 4h, plus normal overnight gaps) shouldn't wipe it.
@@ -873,10 +910,12 @@ function classifyHolding(md, item, ta, macroTa) {
           delete dcaStreakCache[item.id];
           saveDcaStreaks();
         }
-        if (nearLow && !rsiOversold) {
-          reason = `Near its ${ta.rollingLowWindowDays}-day low, but RSI isn't oversold yet — this flag needs both together to avoid firing on every minor dip.`;
+        if (nearLow && rsiOversold && !sharpDrop24h) {
+          reason = `Near its ${ta.rollingLowWindowDays}-day low with RSI oversold too, but the last 24h move (${change24h == null ? '—' : change24h.toFixed(1) + '%'}) isn't a sharp enough drop yet — this coin's own volatility currently calls for ≤ ${dyn24hThreshold.toFixed(1)}% in a day before flagging an add.`;
+        } else if (nearLow && !rsiOversold) {
+          reason = `Near its ${ta.rollingLowWindowDays}-day low, but RSI isn't oversold yet — this flag needs price, RSI, and a sharp 24h drop together to avoid firing on every minor dip.`;
         } else {
-          reason = `Not near its ${ta.rollingLowWindowDays}-day low yet (currently ${Math.abs(aboveLow).toFixed(1)}% ${aboveLow >= 0 ? 'above' : 'below'} it) — this only flags an add when price and RSI are both at an extreme.`;
+          reason = `Not near its ${ta.rollingLowWindowDays}-day low yet (currently ${Math.abs(aboveLow).toFixed(1)}% ${aboveLow >= 0 ? 'above' : 'below'} it) — this only flags an add when price, RSI, and a sharp 24h drop are all at an extreme together.`;
         }
       }
     } else {
@@ -887,10 +926,10 @@ function classifyHolding(md, item, ta, macroTa) {
   }
 
   const nearTarget = item.target && cur != null ? (cur >= item.target * (1 - TARGET_PROXIMITY_PCT / 100)) : false;
-  if (nearTarget && item.target && signal !== 'EXIT' && signal !== 'AT RISK') {
+  if (nearTarget && signal !== 'EXIT' && signal !== 'AT RISK') {
     signal = 'TRIM'; colorKey = 'trim';
     strength = 55;
-    reason = `Price is at or within ${TARGET_PROXIMITY_PCT}% of your target (₹${item.target}). ` + reason;
+    reason = `Price is at or within ${TARGET_PROXIMITY_PCT}% of your target (₹${item.target}) — worth considering a trim regardless of what the underlying discount signal says.`;
   }
 
   return {
@@ -1025,7 +1064,7 @@ async function fetchPricesChunk(validIds, attempt = 0) {
         };
       });
       validIds.forEach(id => {
-        if (!foundIds.has(id) && !marketDataCache[id]) {
+        if (!foundIds.has(id)) {
           marketDataCache[id] = { notFound: true, timestamp: Date.now() };
         }
       });
