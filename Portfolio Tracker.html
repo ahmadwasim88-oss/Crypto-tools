@@ -265,6 +265,35 @@ td[data-col="coin"] { max-width: 44px; overflow: hidden; text-overflow: ellipsis
   color: var(--sell);
   border: 1px solid rgba(255,92,114,0.25);
 }
+.dca-log-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.dca-log-status {
+  font-size: 11px;
+  color: var(--muted-2);
+}
+.dca-log-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.dca-log-btn {
+  background: var(--panel);
+  color: var(--dca);
+  border: 1px solid rgba(34,193,217,0.35);
+  font-size: 11.5px;
+  padding: 6px 12px;
+}
+.dca-log-clear-btn {
+  background: transparent;
+  color: var(--muted-2);
+  border: 1px solid var(--border);
+  font-size: 11.5px;
+  padding: 6px 12px;
+}
 .chart-toggle-row {
   display: flex;
   align-items: center;
@@ -455,6 +484,9 @@ const DCA_24H_DROP_LOOKBACK_DAYS = 20;   // window used to measure this coin's o
 const DCA_24H_DROP_MULT = 1.2;           // required 24h drop = this many x the coin's average daily move
 const DCA_24H_DROP_FLOOR_PCT = -3;       // never require less than a 3% drop, even for very calm coins
 const DCA_24H_DROP_CEIL_PCT = -15;       // never require more than a 15% drop, even for very wild coins
+const DCA_GAP_MULT = 1.5;                // required gap below last DCA level = this many x the coin's average daily move
+const DCA_GAP_FLOOR_PCT = 2;             // never require less than a 2% gap below the last DCA level, even for calm coins
+const DCA_GAP_CEIL_PCT = 10;             // never require more than a 10% gap below the last DCA level, even for wild coins
 const STREAK_GRACE_PERIOD_MS = 36 * 60 * 60000;
 const REL_STRENGTH_WINDOW_DAYS = 14;
 const EMA_TREND_FAST_SHORT = 20, EMA_TREND_FAST_LONG = 50;
@@ -484,6 +516,7 @@ let pricesCache       = JSON.parse(localStorage.getItem('shortfall_prices') || '
 let marketDataCache   = JSON.parse(localStorage.getItem('shortfall_market_data') || '{}');
 let holdingSignalCache = JSON.parse(localStorage.getItem('shortfall_holding_signals') || '{}');
 let dcaStreakCache = JSON.parse(localStorage.getItem('shortfall_dca_streaks') || '{}');
+let dcaLogCache = JSON.parse(localStorage.getItem('shortfall_dca_log') || '{}'); // user-logged actual DCA prices, keyed by coin id — never auto-written
 let taCache            = JSON.parse(localStorage.getItem('shortfall_ta_data') || '{}');
 
 let coinList = [];
@@ -536,6 +569,7 @@ const savePrices           = () => localStorage.setItem('shortfall_prices', JSON
 const saveMarketData       = () => localStorage.setItem('shortfall_market_data', JSON.stringify(marketDataCache));
 const saveHoldingSignals   = () => localStorage.setItem('shortfall_holding_signals', JSON.stringify(holdingSignalCache));
 const saveDcaStreaks       = () => localStorage.setItem('shortfall_dca_streaks', JSON.stringify(dcaStreakCache));
+const saveDcaLog           = () => localStorage.setItem('shortfall_dca_log', JSON.stringify(dcaLogCache));
 const saveTaData           = () => localStorage.setItem('shortfall_ta_data', JSON.stringify(taCache));
 
 function buildPortfolioMap() {
@@ -891,17 +925,42 @@ function classifyHolding(md, item, ta, macroTa) {
         const existing = dcaStreakCache[item.id];
         if (!existing) {
           dcaStreakCache[item.id] = { startedDateStr: todayStr, lastAtLowAt: Date.now() };
-          saveDcaStreaks();
         } else {
           // Migrate any pre-existing entry that only has the old raw-timestamp shape.
           if (!existing.startedDateStr) existing.startedDateStr = istDateStr(existing.startedAt ?? Date.now());
           existing.lastAtLowAt = Date.now();
-          saveDcaStreaks();
         }
+        saveDcaStreaks();
         dcaStreakDay = daysBetweenDateStrs(dcaStreakCache[item.id].startedDateStr, todayStr) + 1;
-        signal = 'ACCUMULATE'; colorKey = 'dca';
-        strength = Math.round(Math.min(60, strength + 30) + relStrengthBonus);
-        reason = `Price is near its own ${ta.rollingLowWindowDays}-day low with RSI also oversold and a sharp 24h drop (${change24h.toFixed(1)}%, vs its own ${dyn24hThreshold.toFixed(1)}% threshold) — all three true right now, not a reversal prediction, just a capital-efficient entry point. ${dcaStreakDay === 1 ? 'First flagged today.' : `First flagged ${dcaStreakDay} days ago and still holding — this is a continuation, not a new event.`}${relStrengthNote}`;
+
+        // Gap-efficiency gate: only compares against a price YOU explicitly logged via "Log DCA" —
+        // never auto-captured from a signal fire, since firing ≠ you actually buying, and you may
+        // buy at a different price than CMP-at-fire-time or not buy at all. No log yet → no gate,
+        // fires ACCUMULATE every day the conditions hold, same as before this feature existed.
+        const lastLog = dcaLogCache[item.id] ?? null;
+        const dynGapPct = Math.max(
+          DCA_GAP_FLOOR_PCT,
+          Math.min(DCA_GAP_CEIL_PCT, (avgDailyMove ?? DCA_GAP_FLOOR_PCT) * DCA_GAP_MULT)
+        );
+        const gapPct = lastLog != null ? (lastLog.price - cur) / lastLog.price * 100 : null;
+        const gapCleared = lastLog == null || gapPct >= dynGapPct;
+
+        if (gapCleared) {
+          signal = 'ACCUMULATE'; colorKey = 'dca';
+          strength = Math.round(Math.min(60, strength + 30) + relStrengthBonus);
+          const gapNote = lastLog == null ? '' : ` ${gapPct.toFixed(1)}% below your last logged DCA (${formatINR(lastLog.price, pricePrecisionFor(lastLog.price))} on ${lastLog.dateStr}) — a materially better entry, not the same level again.`;
+          reason = `Price is near its own ${ta.rollingLowWindowDays}-day low with RSI also oversold and a sharp 24h drop (${change24h.toFixed(1)}%, vs its own ${dyn24hThreshold.toFixed(1)}% threshold) — all three true right now, not a reversal prediction, just a capital-efficient entry point. ${dcaStreakDay === 1 ? 'First flagged today.' : `First flagged ${dcaStreakDay} days ago and still holding — this is a continuation, not a new event.`}${gapNote}${relStrengthNote}`;
+        } else {
+          // Underlying add conditions still hold, but price hasn't moved meaningfully past your
+          // last logged DCA — hold back at WAIT rather than flag the same level again. If you never
+          // log the buy, this branch never triggers — logging is what turns the gate on.
+          // gapPct can be negative here (CMP sitting above the logged price, not below it) — say so
+          // correctly rather than always phrasing it as "below".
+          const positionNote = gapPct >= 0
+            ? `price is only ${gapPct.toFixed(1)}% below your last logged DCA (${formatINR(lastLog.price, pricePrecisionFor(lastLog.price))} on ${lastLog.dateStr})`
+            : `price is actually ${Math.abs(gapPct).toFixed(1)}% above your last logged DCA (${formatINR(lastLog.price, pricePrecisionFor(lastLog.price))} on ${lastLog.dateStr}), not below it`;
+          reason = `Add conditions (${ta.rollingLowWindowDays}-day low + RSI oversold + sharp 24h drop) are still true — day ${dcaStreakDay} of this dip — but ${positionNote}. This coin's own volatility currently calls for ≥${dynGapPct.toFixed(1)}% below that level before another add counts as a materially better entry, so this is being held at WAIT to avoid stacking at nearly the same price.${relStrengthNote}`;
+        }
       } else {
         // Only clear the streak once it's genuinely been more than a day since it last qualified —
         // a brief gap (price refreshes every 2 min, TA every 4h, plus normal overnight gaps) shouldn't wipe it.
@@ -1191,6 +1250,27 @@ function removeCoin(id, symbol) {
   renderTable();
 }
 
+function logDcaLevel(id, symbol) {
+  const cur = pricesCache[id] ?? marketDataCache[id]?.current_price ?? null;
+  const suggested = cur != null ? cur.toString() : '';
+  const input = prompt(`Log the price you actually DCA'd ${symbol} at (defaults to current price — edit if you bought at a different price):`, suggested);
+  if (input === null) return; // cancelled
+  const price = parseFloat(input);
+  if (!price || price <= 0) { alert('Enter a valid price.'); return; }
+  dcaLogCache[id] = { price, dateStr: istDateStr(Date.now()), timestamp: Date.now() };
+  saveDcaLog();
+  recomputeHoldingSignals();
+  renderTable();
+}
+
+function clearDcaLevel(id, symbol) {
+  if (!confirm(`Clear the logged DCA level for ${symbol}? This removes the anchor used to judge whether a future add is meaningfully cheaper.`)) return;
+  delete dcaLogCache[id];
+  saveDcaLog();
+  recomputeHoldingSignals();
+  renderTable();
+}
+
 let tvScriptPromise = null;
 function loadTradingViewScript() {
   if (window.TradingView) return Promise.resolve();
@@ -1442,6 +1522,19 @@ function handleRowExpansion(tr, item, forceReExpand = false) {
     ? Math.max(0, Math.min(100, (ta.cmp - barLow) / (barHigh - barLow) * 100))
     : 50;
   const atlIsCheap = pctAboveAtl != null && pctAboveAtl <= ATL_PROXIMITY_PCT;
+  const lastLog = dcaLogCache[item.id] ?? null;
+  // The "log this DCA" action only makes sense while ACCUMULATE is actually active — showing it on
+  // WAIT/HOLD/etc rows offers an action that has nothing to gate. A leftover log from an earlier
+  // streak still needs to stay clearable even after the signal has moved on, so that part isn't gated.
+  const showLogAction = ta.signal === 'ACCUMULATE';
+  const dcaLogHtml = (!showLogAction && !lastLog) ? '' : `
+    <div class="dca-log-row">
+      <span class="dca-log-status">${lastLog ? `Last logged DCA: ${formatINR(lastLog.price, pricePrecisionFor(lastLog.price))} on ${lastLog.dateStr}` : 'No DCA logged yet for this dip.'}</span>
+      <div class="dca-log-actions">
+        ${lastLog ? `<button type="button" class="dca-log-clear-btn" data-id="${item.id}" data-symbol="${item.symbol}">Clear</button>` : ''}
+        ${showLogAction ? `<button type="button" class="dca-log-btn" data-id="${item.id}" data-symbol="${item.symbol}">${lastLog ? 'Update' : 'Log'} DCA</button>` : ''}
+      </div>
+    </div>`;
   row.innerHTML = `
     <td colspan="6"><div class="detail-box">
       <div class="detail-group-title">Price Action</div>
@@ -1489,6 +1582,7 @@ function handleRowExpansion(tr, item, forceReExpand = false) {
       </div>
       ${ta.taStale ? '<div class="detail-reason" style="color:var(--muted-2)">TA history for this coin hasn\'t loaded yet.</div>' : ''}
       <div class="detail-reason"><b>Why:</b> ${ta.reason}</div>
+      ${dcaLogHtml}
       ${chartHtml}
       ${removeBtnHtml}
     </div></td>
@@ -1496,6 +1590,8 @@ function handleRowExpansion(tr, item, forceReExpand = false) {
   tr.after(row);
   row.querySelector('.detail-remove-btn').onclick = () => removeCoin(item.id, item.symbol);
   row.querySelector('.chart-toggle-btn').onclick = (e) => toggleChart(item.id, item.symbol, e.currentTarget);
+  row.querySelector('.dca-log-btn')?.addEventListener('click', () => logDcaLevel(item.id, item.symbol));
+  row.querySelector('.dca-log-clear-btn')?.addEventListener('click', () => clearDcaLevel(item.id, item.symbol));
   expandedRowId = item.id;
 }
 
