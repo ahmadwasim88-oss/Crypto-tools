@@ -125,9 +125,6 @@ button {
 }
 button:hover:not(:disabled) { filter: brightness(1.1); }
 button:disabled { opacity: 0.4; cursor: not-allowed; }
-.legend { display: none; }
-.legend span { display: inline-flex; align-items: center; gap: 6px; }
-.legend .sw { width: 8px; height: 8px; border-radius: 2px; }
 .table-scroll-wrapper {
   overflow-x: auto;
   overflow-y: visible;
@@ -168,6 +165,7 @@ td[data-col="coin"] { max-width: 44px; overflow: hidden; text-overflow: ellipsis
 .coin-name { font-weight: 600; font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; }
 .coin-sub { display: none; }
 .health-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; margin-right: 2px; flex-shrink: 0; }
+.health-note { font-size: 10px; color: var(--muted-2); white-space: nowrap; }
 .target-input {
   width: 82px; text-align: right; padding: 3px 4px; font-size: 10px;
   font-family: inherit; line-height: normal; box-sizing: border-box;
@@ -403,15 +401,6 @@ td[data-col="coin"] { max-width: 44px; overflow: hidden; text-overflow: ellipsis
   <input type="text" id="symbolInput" class="symbol-input" placeholder="Type a coin symbol or name to add it…" disabled/>
   <button id="addBtn" disabled>Add coin</button>
   <div id="suggestBox"></div>
-</div>
-
-<div class="legend">
-  <span><span class="sw" style="background:var(--dca)"></span>Accumulate — near its own 90-day low, RSI also oversold, and a sharp 24h drop relative to its own volatility — all right now — a capital-efficient entry point, not a reversal call</span>
-  <span><span class="sw" style="background:var(--hold)"></span>Hold — not discounted enough from its all-time high to be a DCA candidate yet</span>
-  <span><span class="sw" style="background:var(--hold)"></span>Wait — meaningfully discounted, but hasn't hit the near-low + oversold-RSI conditions yet</span>
-  <span><span class="sw" style="background:var(--trim)"></span>Trim — near its all-time high, or at/above your target</span>
-  <span><span class="sw" style="background:var(--trim)"></span>At Risk — thin liquidity / micro-cap, worth watching closely</span>
-  <span><span class="sw" style="background:var(--sell)"></span>Exit — trading has effectively stopped; holding has little expected value regardless of price</span>
 </div>
 
 <div class="table-scroll-wrapper">
@@ -869,6 +858,9 @@ function classifyHolding(md, item, ta, macroTa) {
   const effectiveLow = (ta?.rollingLow != null && cur != null)
     ? Math.min(ta.rollingLow, cur, (atlWithinWindow && atlValue != null) ? atlValue : Infinity)
     : null;
+  // True when today's live price (not a confirmed daily close) is what's setting the low —
+  // i.e. the coin is currently probing a fresh low intraday, so this figure will keep moving with price.
+  const isLiveLow = (effectiveLow != null && cur != null) && effectiveLow === cur && (ta?.rollingLow == null || cur < ta.rollingLow);
 
   const isDiscountCandidate = signal === 'WAIT';
   let dcaStreakDay = null;
@@ -963,6 +955,7 @@ function classifyHolding(md, item, ta, macroTa) {
     emaLong: ta?.emaLong ?? null,
     rollingLow: ta?.rollingLow ?? null,
     effectiveLow,
+    isLiveLow,
     rollingLowWindowDays: ta?.rollingLowWindowDays ?? null,
     cmp: cur ?? null,
     relStrengthVsBtc,
@@ -1179,27 +1172,28 @@ const SIGNAL_LABELS_SHORT = {
 
 function healthOf(id) {
   const entry = marketDataCache[id];
-  if (!entry || entry.notFound) return { color: 'var(--sell)', label: 'No market data' };
+  if (!entry || entry.notFound) return { color: 'var(--sell)', shortLabel: 'No data', fresh: false };
   const stale = (Date.now() - entry.timestamp) >= PRICE_REFRESH_INTERVAL * 3;
   return stale
-    ? { color: 'var(--trim)', label: `Stale — last updated ${formatTime(entry.timestamp)}` }
-    : { color: 'var(--buy)', label: `Fresh — updated ${formatTime(entry.timestamp)}` };
+    ? { color: 'var(--trim)', shortLabel: `Stale ${formatTime(entry.timestamp)}`, fresh: false }
+    : { color: 'var(--buy)', shortLabel: '', fresh: true };
 }
 
 function signalCellHTML(id) {
   const ta = holdingSignalCache[id];
   const health = healthOf(id);
+  const healthNote = health.fresh ? '' : `<span class="health-note">${health.shortLabel}</span>`;
   if (!ta || ta.signal === 'NA') {
     return {
       html: `<div class="signal-wrap">
-        <span class="health-dot" style="background:${health.color}"></span>
+        <span class="health-dot" style="background:${health.color}"></span>${healthNote}
         <span class="signal-badge na">${!marketDataCache[id] ? 'No data' : 'Pending'}</span>
       </div>`
     };
   }
   const label = `${SIGNAL_LABELS_SHORT[ta.signal] || ta.signal} (${ta.strength}%)${ta.signal === 'ACCUMULATE' && ta.dcaStreakDay ? ` · D${ta.dcaStreakDay}` : ''}`;
   const html = `<div class="signal-wrap">
-      <span class="health-dot" style="background:${health.color}" title="${health.label}"></span>
+      <span class="health-dot" style="background:${health.color}"></span>${healthNote}
       <span class="signal-badge ${ta.colorKey}">${label}</span>
     </div>`;
   return { html };
@@ -1379,7 +1373,7 @@ function renderTable() {
       <td class="numeric" data-col="target" data-label="Target">${targetCellHTML(item)}</td>
       <td class="numeric gain-cell ${gain == null ? 'gain-na' : gain >= 0 ? 'gain-pos' : 'gain-neg'}" data-col="gain" data-label="To target">${formatPct(gain)}</td>
       <td class="center signal-cell" data-col="signal" data-label="Signal">${signalHtml}</td>
-      <td class="center" data-col="del"><button class="delete-btn" data-id="${item.id}" title="Remove">✕</button></td>
+      <td class="center" data-col="del"><button class="delete-btn" data-id="${item.id}">✕</button></td>
     `;
 
     tr.querySelector('.delete-btn').onclick = (e) => {
@@ -1537,7 +1531,7 @@ function handleRowExpansion(tr, item, forceReExpand = false) {
         <div class="detail-item"><div class="label">Conviction</div><div class="value">${ta.strength}%</div></div>
         <div class="detail-item"><div class="label">RSI (14)</div><div class="value ${ta.rsi != null && ta.rsi <= RSI_OVERSOLD ? 'buy' : ta.rsi != null && ta.rsi >= RSI_OVERBOUGHT ? 'sell' : ''}">${ta.rsi == null ? '—' : ta.rsi.toFixed(0)}</div></div>
         <div class="detail-item"><div class="label">CMP → EMA 200</div><div class="value target-pct">${(ta.emaLong == null || ta.cmp == null) ? '—' : (((ta.emaLong - ta.cmp) / ta.cmp * 100) >= 0 ? '+' : '') + ((ta.emaLong - ta.cmp) / ta.cmp * 100).toFixed(1) + '% (' + formatINR(ta.emaLong, precision) + ')'}</div></div>
-        <div class="detail-item"><div class="label">${ta.rollingLowWindowDays || DCA_DIP_WINDOW_DAYS}-Day Low</div><div class="value">${(ta.effectiveLow == null || ta.cmp == null) ? '—' : formatINR(ta.effectiveLow, precision) + ' (' + (((ta.cmp - ta.effectiveLow) / ta.effectiveLow * 100) >= 0 ? '+' : '') + ((ta.cmp - ta.effectiveLow) / ta.effectiveLow * 100).toFixed(1) + '% ' + (((ta.cmp - ta.effectiveLow) / ta.effectiveLow * 100) >= 0 ? 'above' : 'below') + ')'}</div></div>
+        <div class="detail-item"><div class="label">${ta.rollingLowWindowDays || DCA_DIP_WINDOW_DAYS}-Day Low${ta.isLiveLow ? ' <span>⚡</span>' : ''}</div><div class="value">${(ta.effectiveLow == null || ta.cmp == null) ? '—' : formatINR(ta.effectiveLow, precision) + ' (' + (((ta.cmp - ta.effectiveLow) / ta.effectiveLow * 100) >= 0 ? '+' : '') + ((ta.cmp - ta.effectiveLow) / ta.effectiveLow * 100).toFixed(1) + '% ' + (((ta.cmp - ta.effectiveLow) / ta.effectiveLow * 100) >= 0 ? 'above' : 'below') + ')'}</div></div>
         <div class="detail-item"><div class="label">Sentiment (20/50 EMA)</div><div class="value ${ta.sentiment === 'Bullish' ? 'buy' : ta.sentiment === 'Bearish' ? 'sell' : ''}">${ta.sentiment == null ? '—' : ta.sentiment}</div></div>
         <div class="detail-item"><div class="label">Rel. Strength (${REL_STRENGTH_WINDOW_DAYS}d vs BTC)</div><div class="value ${ta.relStrengthVsBtc > 0 ? 'buy' : ta.relStrengthVsBtc < 0 ? 'sell' : ''}">${ta.relStrengthVsBtc == null ? '—' : (ta.relStrengthVsBtc >= 0 ? '+' : '') + ta.relStrengthVsBtc.toFixed(1) + 'pp (' + (ta.relStrengthVsBtc > 0 ? 'Outperforming' : 'Underperforming') + ')'}</div></div>
       </div>
