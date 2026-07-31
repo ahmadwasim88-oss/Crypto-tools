@@ -60,7 +60,6 @@ header {
   letter-spacing: -0.01em;
   color: var(--text);
 }
-.brand .sub { display: none; }
 .status-panel {
   display: flex;
   align-items: center;
@@ -154,7 +153,6 @@ th {
   border-bottom: 1px solid var(--border);
   padding: 8px 10px;
 }
-th:last-child, td[data-col="del"] { display: none; }
 th.sortable { cursor: pointer; user-select: none; }
 th.sortable:hover { color: var(--text); }
 .sort-arrow { margin-left: 4px; opacity: 0.6; }
@@ -163,9 +161,7 @@ tbody tr.main-row:hover { background: rgba(255,255,255,0.025); }
 tbody tr.main-row:last-child { border-bottom: none; }
 td[data-col="coin"] { max-width: 44px; overflow: hidden; text-overflow: ellipsis; }
 .coin-name { font-weight: 600; font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; }
-.coin-sub { display: none; }
 .health-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; margin-right: 2px; flex-shrink: 0; }
-.health-note { font-size: 10px; color: var(--muted-2); white-space: nowrap; }
 .target-input {
   width: 82px; text-align: right; padding: 3px 4px; font-size: 10px;
   font-family: inherit; line-height: normal; box-sizing: border-box;
@@ -196,17 +192,6 @@ td[data-col="coin"] { max-width: 44px; overflow: hidden; text-overflow: ellipsis
 .signal-badge.trim { color: var(--trim); }
 .signal-badge.hold { color: var(--hold); }
 .signal-badge.na { color: var(--muted-2); }
-.delete-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 15px;
-  color: var(--muted-2);
-  padding: 2px 6px;
-  border-radius: 4px;
-  transition: color 0.12s ease, background 0.12s ease;
-}
-.delete-btn:hover { color: var(--sell); background: var(--sell-dim); }
 .empty-row td { text-align: center; color: var(--muted-2); padding: 32px 12px; }
 .detail-row td { padding: 0; background: var(--panel-2); white-space: normal; }
 .detail-box { padding: 10px; }
@@ -390,7 +375,6 @@ td[data-col="coin"] { max-width: 44px; overflow: hidden; text-overflow: ellipsis
 <header>
   <div class="brand">
     <h1>Portfolio Tracker</h1>
-    <span class="sub">Capital-efficient DCA signals, gated by liquidity — discount depth alone is never enough</span>
   </div>
   <div class="status-panel">
     <div id="currentStatus" class="pill info"><span class="dot"></span>Initializing…</div>
@@ -412,11 +396,10 @@ td[data-col="coin"] { max-width: 44px; overflow: hidden; text-overflow: ellipsis
 <th class="numeric">Target ₹</th>
 <th class="numeric sortable" id="gainSortHeader">To target<span class="sort-arrow" id="gainSortArrow"></span></th>
 <th class="center sortable" id="signalSortHeader">Signal<span class="sort-arrow" id="signalSortArrow"></span></th>
-<th class="center" style="width:36px;"></th>
 </tr>
 </thead>
 <tbody id="tableBody">
-<tr class="empty-row"><td colspan="6">Loading coin list and prices…</td></tr>
+<tr class="empty-row"><td colspan="5">Loading coin list and prices…</td></tr>
 </tbody>
 </table>
 </div>
@@ -1182,18 +1165,28 @@ function healthOf(id) {
 function signalCellHTML(id) {
   const ta = holdingSignalCache[id];
   const health = healthOf(id);
-  const healthNote = health.fresh ? '' : `<span class="health-note">${health.shortLabel}</span>`;
+  if (!health.fresh) {
+    // Data is stale/missing — the signal was computed from this same data,
+    // so it's not trustworthy either. Show only the freshness state, not both.
+    const label = health.shortLabel || 'Stale';
+    return {
+      html: `<div class="signal-wrap">
+        <span class="health-dot" style="background:${health.color}"></span>
+        <span class="signal-badge na">${label}</span>
+      </div>`
+    };
+  }
   if (!ta || ta.signal === 'NA') {
     return {
       html: `<div class="signal-wrap">
-        <span class="health-dot" style="background:${health.color}"></span>${healthNote}
+        <span class="health-dot" style="background:${health.color}"></span>
         <span class="signal-badge na">${!marketDataCache[id] ? 'No data' : 'Pending'}</span>
       </div>`
     };
   }
   const label = `${SIGNAL_LABELS_SHORT[ta.signal] || ta.signal} (${ta.strength}%)${ta.signal === 'ACCUMULATE' && ta.dcaStreakDay ? ` · D${ta.dcaStreakDay}` : ''}`;
   const html = `<div class="signal-wrap">
-      <span class="health-dot" style="background:${health.color}"></span>${healthNote}
+      <span class="health-dot" style="background:${health.color}"></span>
       <span class="signal-badge ${ta.colorKey}">${label}</span>
     </div>`;
   return { html };
@@ -1349,7 +1342,7 @@ document.addEventListener('click', (e) => {
 
 function renderTable() {
   if (saved.length === 0) {
-    tableBody.innerHTML = '<tr class="empty-row"><td colspan="6">No coins yet — add one above to start tracking signals.</td></tr>';
+    tableBody.innerHTML = '<tr class="empty-row"><td colspan="5">No coins yet — add one above to start tracking signals.</td></tr>';
     return;
   }
 
@@ -1367,19 +1360,12 @@ function renderTable() {
     tr.innerHTML = `
       <td data-col="coin">
         <div class="coin-name">${item.symbol}</div>
-        <div class="coin-sub">${item.name || ''}</div>
       </td>
       <td class="numeric price-cell" data-id="${item.id}" data-col="price" data-label="Price">${priceCellHTML(item.id, cur)}</td>
       <td class="numeric" data-col="target" data-label="Target">${targetCellHTML(item)}</td>
       <td class="numeric gain-cell ${gain == null ? 'gain-na' : gain >= 0 ? 'gain-pos' : 'gain-neg'}" data-col="gain" data-label="To target">${formatPct(gain)}</td>
       <td class="center signal-cell" data-col="signal" data-label="Signal">${signalHtml}</td>
-      <td class="center" data-col="del"><button class="delete-btn" data-id="${item.id}">✕</button></td>
     `;
-
-    tr.querySelector('.delete-btn').onclick = (e) => {
-      e.stopPropagation();
-      removeCoin(item.id, item.symbol);
-    };
 
     tr.onclick = (e) => {
       if (e.target.classList.contains('target-input')) return;
@@ -1458,7 +1444,7 @@ function handleRowExpansion(tr, item, forceReExpand = false) {
     <div class="chart-container" id="chart-container-${item.id}"></div>`;
 
   if (!ta || ta.signal === 'NA') {
-    row.innerHTML = `<td colspan="6"><div class="detail-box">
+    row.innerHTML = `<td colspan="5"><div class="detail-box">
       <div class="detail-reason">${ta ? ta.reason : 'No market data yet for this coin.'}</div>
       ${chartHtml}
       ${removeBtnHtml}
@@ -1491,7 +1477,7 @@ function handleRowExpansion(tr, item, forceReExpand = false) {
       </div>
     </div>`;
   row.innerHTML = `
-    <td colspan="6"><div class="detail-box">
+    <td colspan="5"><div class="detail-box">
       <div class="detail-group-title">Price Action</div>
       <div class="price-bar-wrap">
         <div class="price-bar-header">
@@ -1606,21 +1592,18 @@ addBtn.onclick = async () => {
   fetchTaForPortfolio([newCoin.id]);
 };
 
-gainHeader.title = 'Sort by distance to target';
 gainHeader.addEventListener('click', () => {
   sortDir = currentSortColumn === 'gain' ? (sortDir === 'desc' ? 'asc' : 'desc') : 'desc';
   currentSortColumn = 'gain';
   applyCurrentSort();
 });
 
-priceHeader.title = 'Sort by 24h change';
 priceHeader.addEventListener('click', () => {
   sortDir = currentSortColumn === 'change24h' ? (sortDir === 'desc' ? 'asc' : 'desc') : 'desc';
   currentSortColumn = 'change24h';
   applyCurrentSort();
 });
 
-signalHeader.title = 'Sort by signal conviction';
 signalHeader.addEventListener('click', () => {
   sortDir = currentSortColumn === 'signal' ? (sortDir === 'desc' ? 'asc' : 'desc') : 'desc';
   currentSortColumn = 'signal';
