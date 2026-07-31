@@ -23,6 +23,7 @@
   --trim: #e8a63b;
   --trim-dim: rgba(232,166,59,0.12);
   --hold: #7d8998;
+  --target: #f5d90a;
   --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", "Roboto Mono", Consolas, monospace;
   --font-ui: -apple-system, "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --r-sm: 6px;
@@ -227,7 +228,7 @@ td[data-col="coin"] { max-width: 44px; overflow: hidden; text-overflow: ellipsis
 .detail-item .value.buy { color: var(--buy); }
 .detail-item .value.sell { color: var(--sell); }
 .detail-item .value.hold { color: var(--hold); }
-.detail-item .value.target-pct { color: #f5d90a; }
+.detail-item .value.target-pct { color: var(--target); }
 .detail-item .sub-value { font-family: var(--font-mono); font-size: 10px; color: var(--muted-2); margin-top: 2px; }
 .detail-item .sub-value.buy { color: var(--buy); }
 .detail-item .sub-value.sell { color: var(--sell); }
@@ -480,7 +481,7 @@ const ATL_PROXIMITY_PCT = 10;
 
 const EMA_TREND_LONG = 200;
 
-const TA_LOGIC_VERSION = 10;
+const TA_LOGIC_VERSION = 11;
 const TA_FETCH_VERSION = 2;
 
 let saved             = JSON.parse(localStorage.getItem('shortfall_portfolio') || '[]');
@@ -508,6 +509,7 @@ let currentSortColumn = 'gain';
 let sortDir = 'desc';
 
 const formatTime = (ts) => !ts ? 'N/A' : new Date(ts).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
+const formatDateTime = (ts) => !ts ? 'N/A' : new Date(ts).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
 const formatLogTime = () => new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
 const formatINR = (n, maxDecimals = 2, compact = false) => {
   if (n == null || isNaN(n)) return '—';
@@ -556,7 +558,7 @@ function renderAmbientStatus() {
 }
 
 function updateScheduledStatus() {
-  ambientStatusText = `Prices ${formatTime(lastPriceTime)} · TA ${lastTaTime ? formatTime(lastTaTime) : 'loading…'}`;
+  ambientStatusText = `Prices ${formatTime(lastPriceTime)} · TA ${lastTaTime ? formatDateTime(lastTaTime) : 'loading…'}`;
   if (!statusEventActive) renderAmbientStatus();
 }
 
@@ -641,10 +643,15 @@ function computeTaFromCloses(closes) {
   const rsiSeries = calcRSISeries(closes, RSI_PERIOD);
   const dipWindowCloses = closes.slice(-DCA_DIP_WINDOW_DAYS);
   const rollingLow = dipWindowCloses.length ? Math.min(...dipWindowCloses) : null;
+  // dipWindowCloses[last] is the most recent confirmed daily close (1 day ago, since today's
+  // in-progress point is dropped by fetchTaHistory) — so days-ago counts back from that index.
+  const rollingLowIndex = dipWindowCloses.length ? dipWindowCloses.indexOf(rollingLow) : -1;
+  const rollingLowDaysAgo = rollingLowIndex >= 0 ? (dipWindowCloses.length - rollingLowIndex) : null;
   return {
     rsi: rsiSeries.length ? rsiSeries[rsiSeries.length - 1] : null,
     emaLong: emaLongSeries.length ? emaLongSeries[emaLongSeries.length - 1] : null,
     rollingLow,
+    rollingLowDaysAgo,
     rollingLowWindowDays: dipWindowCloses.length,
     closes,
     version: TA_LOGIC_VERSION,
@@ -768,8 +775,12 @@ function classifyHolding(md, item, ta, macroTa) {
   const athValue = (md.ath != null && cur != null) ? Math.max(md.ath, cur) : md.ath;
   const athPct = (athValue != null && cur != null) ? (athValue === md.ath ? md.ath_change_percentage : 0) : md.ath_change_percentage;
   const athDate = md.ath_date;
+  // True when today's live price — not CoinGecko's recorded ath/atl_date — is what's setting the
+  // extreme, so the recorded date would otherwise go stale next to an updated value.
+  const isLiveAth = (athValue != null && cur != null) && athValue === cur && (md.ath == null || cur > md.ath);
   const atlValue = (md.atl != null && cur != null) ? Math.min(md.atl, cur) : md.atl;
   const atlDate = md.atl_date;
+  const isLiveAtl = (atlValue != null && cur != null) && atlValue === cur && (md.atl == null || cur < md.atl);
   const low24h = md.low_24h;
   const high24h = md.high_24h;
   const ownReturnPct = calcReturnPct(ta?.closes, REL_STRENGTH_WINDOW_DAYS);
@@ -844,6 +855,14 @@ function classifyHolding(md, item, ta, macroTa) {
   // True when today's live price (not a confirmed daily close) is what's setting the low —
   // i.e. the coin is currently probing a fresh low intraday, so this figure will keep moving with price.
   const isLiveLow = (effectiveLow != null && cur != null) && effectiveLow === cur && (ta?.rollingLow == null || cur < ta.rollingLow);
+  // Days ago for whichever source actually set effectiveLow: live price (today), a historical
+  // ATL that folded in because it's both within the window and lower than the rolling-close low,
+  // or the rolling-close low itself (position within the daily-closes window).
+  const effectiveLowDaysAgo = isLiveLow
+    ? 0
+    : (atlWithinWindow && atlValue != null && effectiveLow === atlValue)
+      ? daysSince(atlDate)
+      : (ta?.rollingLowDaysAgo ?? null);
 
   const isDiscountCandidate = signal === 'WAIT';
   let dcaStreakDay = null;
@@ -932,12 +951,13 @@ function classifyHolding(md, item, ta, macroTa) {
 
   return {
     signal, colorKey, strength, reason,
-    volume, mcap, rank, athPct, athValue, athDate, atlValue, atlDate, low24h, high24h, volMcapRatio,
+    volume, mcap, rank, athPct, athValue, athDate, atlValue, atlDate, isLiveAth, isLiveAtl, low24h, high24h, volMcapRatio,
     change24h: md.change_24h, change7d: md.change_7d, change30d: md.change_30d,
     rsi: ta?.rsi ?? null,
     emaLong: ta?.emaLong ?? null,
     rollingLow: ta?.rollingLow ?? null,
     effectiveLow,
+    effectiveLowDaysAgo,
     isLiveLow,
     rollingLowWindowDays: ta?.rollingLowWindowDays ?? null,
     cmp: cur ?? null,
@@ -1456,8 +1476,8 @@ function handleRowExpansion(tr, item, forceReExpand = false) {
     return;
   }
 
-  const ath = daysSince(ta.athDate);
-  const atl = daysSince(ta.atlDate);
+  const ath = ta.isLiveAth ? 0 : daysSince(ta.athDate);
+  const atl = ta.isLiveAtl ? 0 : daysSince(ta.atlDate);
   const pctAboveAtl = (ta.cmp != null && ta.atlValue != null && ta.atlValue !== 0) ? ((ta.cmp - ta.atlValue) / ta.atlValue * 100) : null;
   const precision = pricePrecisionFor(ta.cmp);
   const barLow = (ta.low24h != null && ta.cmp != null) ? Math.min(ta.low24h, ta.cmp) : ta.low24h;
@@ -1466,6 +1486,7 @@ function handleRowExpansion(tr, item, forceReExpand = false) {
     ? Math.max(0, Math.min(100, (ta.cmp - barLow) / (barHigh - barLow) * 100))
     : 50;
   const atlIsCheap = pctAboveAtl != null && pctAboveAtl <= ATL_PROXIMITY_PCT;
+  const lowIsNear = (ta.effectiveLow != null && ta.cmp != null) && ((ta.cmp - ta.effectiveLow) / ta.effectiveLow * 100) <= DCA_DIP_NEAR_PCT;
   const lastLog = dcaLogCache[item.id] ?? null;
   const showLogAction = ta.signal === 'ACCUMULATE';
   const dcaLogHtml = (!showLogAction && !lastLog) ? '' : `
@@ -1482,7 +1503,7 @@ function handleRowExpansion(tr, item, forceReExpand = false) {
       <div class="price-bar-wrap">
         <div class="price-bar-header">
           <span class="price-bar-cmp">${ta.cmp == null ? '—' : formatINR(ta.cmp, precision)}</span>
-          <span class="price-bar-change ${ta.change24h >= 0 ? 'buy' : 'sell'}">${ta.change24h == null ? '—' : (ta.change24h >= 0 ? '+' : '') + ta.change24h.toFixed(2) + '% (24h)'}</span>
+          <span class="price-bar-change ${ta.change24h == null ? '' : ta.change24h >= 0 ? 'buy' : 'sell'}">${ta.change24h == null ? '—' : (ta.change24h >= 0 ? '+' : '') + ta.change24h.toFixed(2) + '% (24h)'}</span>
         </div>
         ${(barLow == null || barHigh == null) ? '' : `
         <div class="price-bar-track"><div class="price-bar-marker" style="left:${barPct}%"></div></div>
@@ -1493,14 +1514,14 @@ function handleRowExpansion(tr, item, forceReExpand = false) {
         <div class="detail-item"><div class="label">7-Day Change</div><div class="value ${ta.change7d != null && ta.change7d <= CRASH_7D_PCT ? 'sell' : ta.change7d != null && ta.change7d > 0 ? 'buy' : ''}">${ta.change7d == null ? '—' : (ta.change7d >= 0 ? '+' : '') + ta.change7d.toFixed(1) + '%'}</div></div>
         <div class="detail-item"><div class="label">30-Day Change</div><div class="value">${ta.change30d == null ? '—' : (ta.change30d >= 0 ? '+' : '') + ta.change30d.toFixed(1) + '%'}</div></div>
         <div class="detail-item">
-          <div class="label">All-Time High</div>
+          <div class="label">All-Time High${ta.isLiveAth ? ' <span>⚡</span>' : ''}</div>
           <div class="value ${ta.athPct != null && ta.athPct <= DCA_MODERATE_PCT ? 'buy' : ta.athPct != null && ta.athPct > DCA_WATCH_PCT ? 'sell' : ''}">${ta.athValue == null ? '—' : formatINR(ta.athValue, precision)}</div>
-          <div class="sub-value ${ta.athPct != null && ta.athPct <= DCA_MODERATE_PCT ? 'buy' : ta.athPct != null && ta.athPct > DCA_WATCH_PCT ? 'sell' : ''}">${ta.athPct == null ? '—' : ta.athPct.toFixed(1) + '%'}, ${ath == null ? '—' : ath + 'd ago'}</div>
+          <div class="sub-value ${ta.athPct != null && ta.athPct <= DCA_MODERATE_PCT ? 'buy' : ta.athPct != null && ta.athPct > DCA_WATCH_PCT ? 'sell' : ''}">${ta.athPct == null ? '—' : ta.athPct.toFixed(1) + '%'}, ${ta.isLiveAth ? 'today' : (ath == null ? '—' : ath + 'd ago')}</div>
         </div>
         <div class="detail-item">
-          <div class="label">All-Time Low</div>
+          <div class="label">All-Time Low${ta.isLiveAtl ? ' <span>⚡</span>' : ''}</div>
           <div class="value ${atlIsCheap ? 'buy' : ''}">${ta.atlValue == null ? '—' : formatINR(ta.atlValue, precision)}</div>
-          <div class="sub-value ${atlIsCheap ? 'buy' : ''}">${pctAboveAtl == null ? '—' : (pctAboveAtl >= 0 ? '+' : '') + pctAboveAtl.toFixed(1) + '%'}, ${atl == null ? '—' : atl + 'd ago'}</div>
+          <div class="sub-value ${atlIsCheap ? 'buy' : ''}">${pctAboveAtl == null ? '—' : (pctAboveAtl >= 0 ? '+' : '') + pctAboveAtl.toFixed(1) + '%'}, ${ta.isLiveAtl ? 'today' : (atl == null ? '—' : atl + 'd ago')}</div>
         </div>
       </div>
 
@@ -1517,7 +1538,11 @@ function handleRowExpansion(tr, item, forceReExpand = false) {
         <div class="detail-item"><div class="label">Conviction</div><div class="value">${ta.strength}%</div></div>
         <div class="detail-item"><div class="label">RSI (14)</div><div class="value ${ta.rsi != null && ta.rsi <= RSI_OVERSOLD ? 'buy' : ta.rsi != null && ta.rsi >= RSI_OVERBOUGHT ? 'sell' : ''}">${ta.rsi == null ? '—' : ta.rsi.toFixed(0)}</div></div>
         <div class="detail-item"><div class="label">CMP → EMA 200</div><div class="value target-pct">${(ta.emaLong == null || ta.cmp == null) ? '—' : (((ta.emaLong - ta.cmp) / ta.cmp * 100) >= 0 ? '+' : '') + ((ta.emaLong - ta.cmp) / ta.cmp * 100).toFixed(1) + '% (' + formatINR(ta.emaLong, precision) + ')'}</div></div>
-        <div class="detail-item"><div class="label">${ta.rollingLowWindowDays || DCA_DIP_WINDOW_DAYS}-Day Low${ta.isLiveLow ? ' <span>⚡</span>' : ''}</div><div class="value">${(ta.effectiveLow == null || ta.cmp == null) ? '—' : formatINR(ta.effectiveLow, precision) + ' (' + (((ta.cmp - ta.effectiveLow) / ta.effectiveLow * 100) >= 0 ? '+' : '') + ((ta.cmp - ta.effectiveLow) / ta.effectiveLow * 100).toFixed(1) + '% ' + (((ta.cmp - ta.effectiveLow) / ta.effectiveLow * 100) >= 0 ? 'above' : 'below') + ')'}</div></div>
+        <div class="detail-item">
+          <div class="label">${ta.rollingLowWindowDays || DCA_DIP_WINDOW_DAYS}-Day Low${ta.isLiveLow ? ' <span>⚡</span>' : ''}</div>
+          <div class="value ${lowIsNear ? 'buy' : ''}">${ta.effectiveLow == null ? '—' : formatINR(ta.effectiveLow, precision)}</div>
+          <div class="sub-value ${lowIsNear ? 'buy' : ''}">${(ta.effectiveLow == null || ta.cmp == null) ? '—' : (((ta.cmp - ta.effectiveLow) / ta.effectiveLow * 100) >= 0 ? '+' : '') + ((ta.cmp - ta.effectiveLow) / ta.effectiveLow * 100).toFixed(1) + '% ' + (((ta.cmp - ta.effectiveLow) / ta.effectiveLow * 100) >= 0 ? 'above' : 'below') + ', ' + (ta.isLiveLow ? 'today' : (ta.effectiveLowDaysAgo == null ? '—' : ta.effectiveLowDaysAgo + 'd ago'))}</div>
+        </div>
         <div class="detail-item"><div class="label">Sentiment (20/50 EMA)</div><div class="value ${ta.sentiment === 'Bullish' ? 'buy' : ta.sentiment === 'Bearish' ? 'sell' : ''}">${ta.sentiment == null ? '—' : ta.sentiment}</div></div>
         <div class="detail-item"><div class="label">Rel. Strength (${REL_STRENGTH_WINDOW_DAYS}d vs BTC)</div><div class="value ${ta.relStrengthVsBtc > 0 ? 'buy' : ta.relStrengthVsBtc < 0 ? 'sell' : ''}">${ta.relStrengthVsBtc == null ? '—' : (ta.relStrengthVsBtc >= 0 ? '+' : '') + ta.relStrengthVsBtc.toFixed(1) + 'pp (' + (ta.relStrengthVsBtc > 0 ? 'Outperforming' : 'Underperforming') + ')'}</div></div>
       </div>
