@@ -661,7 +661,10 @@ function computeTaFromCloses(closes) {
 
 async function fetchTaHistory(id) {
   try {
-    const res = await fetch(`${API_BASE}/coins/${id}/market_chart?vs_currency=inr&days=${TA_HISTORY_DAYS}&interval=daily&x_cg_demo_api_key=${API_KEY}`);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    const res = await fetch(`${API_BASE}/coins/${id}/market_chart?vs_currency=inr&days=${TA_HISTORY_DAYS}&interval=daily&x_cg_demo_api_key=${API_KEY}`, { signal: controller.signal });
+    clearTimeout(timeoutId);
     if (!res.ok) throw new Error(`HTTP_ERROR:${res.status}`);
     const data = await res.json();
     const points = (data.prices || []).filter(p => p && p[1] != null);
@@ -1145,6 +1148,7 @@ function scheduleApiRecheck() {
       await fetchPrices(ids);
       recomputeHoldingSignals();
       applyCurrentSort();
+      fetchTaForPortfolio([...new Set([...ids, 'bitcoin'])]);
     } else {
       scheduleApiRecheck();
     }
@@ -1161,7 +1165,6 @@ async function schedulePriceFetch() {
     const taIds = [...new Set([...ids, 'bitcoin'])];
     fetchTaForPortfolio(taIds);
   } else {
-    pricesCache = JSON.parse(localStorage.getItem('shortfall_prices') || '{}');
     updatePricesInTable();
     if (refreshPriceTimer) { clearInterval(refreshPriceTimer); refreshPriceTimer = null; }
     scheduleApiRecheck();
@@ -1217,6 +1220,18 @@ function removeCoin(id, symbol) {
   saved = saved.filter(s => s.id !== id);
   save();
   buildPortfolioMap();
+  delete pricesCache[id];
+  delete marketDataCache[id];
+  delete holdingSignalCache[id];
+  delete taCache[id];
+  delete dcaLogCache[id];
+  delete dcaStreakCache[id];
+  savePrices();
+  saveMarketData();
+  saveHoldingSignals();
+  saveTaData();
+  saveDcaLog();
+  saveDcaStreaks();
   if (expandedRowId === id) expandedRowId = null;
   renderTable();
 }
@@ -1614,7 +1629,7 @@ addBtn.onclick = async () => {
   await fetchPrices([newCoin.id]);
   recomputeHoldingSignals();
   applyCurrentSort();
-  fetchTaForPortfolio([newCoin.id]);
+  fetchTaForPortfolio([...new Set([newCoin.id, 'bitcoin'])]);
 };
 
 gainHeader.addEventListener('click', () => {
@@ -1705,9 +1720,6 @@ if (isApiReachable) {
   updateScheduledStatus();
   fetchTaForPortfolio(startTaIds);
 } else {
-  pricesCache = JSON.parse(localStorage.getItem('shortfall_prices') || '{}');
-  marketDataCache = JSON.parse(localStorage.getItem('shortfall_market_data') || '{}');
-  holdingSignalCache = JSON.parse(localStorage.getItem('shortfall_holding_signals') || '{}');
   scheduleApiRecheck();
 }
 
