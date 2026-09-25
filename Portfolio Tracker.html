@@ -22,6 +22,8 @@
   --dca: #22c1d9;
   --trim: #e8a63b;
   --trim-dim: rgba(232,166,59,0.12);
+  --swing: #ff5fa2;
+  --swing-dim: rgba(255,95,162,0.12);
   --hold: #7d8998;
   --target: #f5d90a;
   --rsi: #c792ea;
@@ -192,6 +194,7 @@ td[data-col="coin"] { max-width: 44px; overflow: hidden; text-overflow: ellipsis
 .signal-badge.sell { color: var(--sell); }
 .signal-badge.dca { color: var(--dca); }
 .signal-badge.trim { color: var(--trim); }
+.signal-badge.swing { color: var(--swing); }
 .signal-badge.hold { color: var(--hold); }
 .signal-badge.na { color: var(--muted-2); }
 .empty-row td { text-align: center; color: var(--muted-2); padding: 32px 12px; }
@@ -225,15 +228,28 @@ td[data-col="coin"] { max-width: 44px; overflow: hidden; text-overflow: ellipsis
 .price-bar-marker { position: absolute; top: 50%; width: 15px; height: 15px; border-radius: 50%; background: var(--accent); border: 3px solid var(--bg); transform: translate(-50%, -50%); box-shadow: 0 0 0 2px var(--accent), 0 0 10px 2px rgba(76,141,255,0.55); }
 .price-bar-labels { display: flex; justify-content: space-between; margin-top: 4px; font-family: var(--font-mono); font-size: 10px; color: var(--muted-2); }
 .detail-item { min-width: 0; }
+.detail-item.signal-input {
+  background: var(--panel);
+  border: 1px solid rgba(76,141,255,0.3);
+  border-radius: var(--r-sm);
+  padding: 6px 7px;
+}
+.detail-item.signal-input .label { color: var(--accent); opacity: 0.95; }
+.detail-grid-headline { margin-bottom: 6px; }
+.detail-item-span2 { grid-column: 1 / -1; display: flex; align-items: baseline; gap: 8px; }
+.detail-item-span2 .label { margin-bottom: 0; }
+.detail-item-span2 .value { font-size: 15px; }
 .detail-item .label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted-2); margin-bottom: 2px; }
 .detail-item .value { font-family: var(--font-mono); font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
 .detail-item .value.buy { color: var(--buy); }
 .detail-item .value.sell { color: var(--sell); }
+.detail-item .value.swing { color: var(--swing); }
 .detail-item .value.target-pct { color: var(--target); }
 .detail-item .value.rsi-value { color: var(--rsi); }
 .detail-item .sub-value { font-family: var(--font-mono); font-size: 10px; color: var(--muted-2); margin-top: 2px; }
 .detail-item .sub-value.buy { color: var(--buy); }
 .detail-item .sub-value.sell { color: var(--sell); }
+.detail-item .sub-value.swing { color: var(--swing); }
 .detail-reason {
   font-size: 11.5px;
   color: var(--muted);
@@ -508,7 +524,7 @@ const TA_FETCH_DELAY_MS = 1500;
 
 const RSI_PERIOD = 14;
 const RSI_OVERSOLD = 30; // fallback only, used when a coin lacks enough RSI history for its own threshold
-const RSI_OVERBOUGHT = 70;
+const RSI_OVERBOUGHT = 85; // fallback only — flat cutoff before a coin has enough RSI history for its own threshold
 const ATL_PROXIMITY_PCT = 10;
 // Not every coin's RSI oscillates through the same range — low-volatility coins (often BTC
 // itself) can bottom at RSI 35-40 and never print sub-30, while high-beta alts blow through 20.
@@ -519,6 +535,14 @@ const RSI_OVERSOLD_PERCENTILE = 15;
 const RSI_OVERSOLD_MIN_SAMPLES = 60; // need a reasonable amount of RSI history before trusting a per-coin threshold
 const RSI_OVERSOLD_FLOOR = 20; // sanity bounds so thin/erratic history can't produce a pointlessly strict or loose threshold
 const RSI_OVERSOLD_CEIL = 45;
+// Mirrors the oversold logic above for the top side, but deliberately stricter: this is meant to
+// flag only genuinely extreme, blow-off-top conditions worth swing-selling into — not just "a bit
+// hot" — so it clamps to a much narrower, higher band (80-92) than the oversold side's 20-45, and
+// looks at each coin's own 97th percentile rather than its 85th.
+const RSI_OVERBOUGHT_PERCENTILE = 97;
+const RSI_OVERBOUGHT_MIN_SAMPLES = 60;
+const RSI_OVERBOUGHT_FLOOR = 80;
+const RSI_OVERBOUGHT_CEIL = 92;
 
 function percentileOf(sortedAsc, pct) {
   if (!sortedAsc || !sortedAsc.length) return null;
@@ -537,8 +561,8 @@ const DISCOVER_MAX_TA_FETCHES = 25;
 
 const EMA_TREND_LONG = 200;
 
-const TA_LOGIC_VERSION = 13; // bumped: volatility-scaled near-low band and ATH tiers added
-const TA_FETCH_VERSION = 2;
+const TA_LOGIC_VERSION = 16; // bumped: RSI overbought band tightened to 80-92 (97th pct) for extreme-only SWING TRIM
+const TA_FETCH_VERSION = 3; // bumped: now also fetches true OHLC extremes for the 90d high/low
 
 let saved             = JSON.parse(localStorage.getItem('shortfall_portfolio') || '[]');
 let pricesCache       = JSON.parse(localStorage.getItem('shortfall_prices') || '{}');
@@ -726,16 +750,25 @@ function computeTaFromCloses(closes) {
   const rsiSeries = calcRSISeries(closes, RSI_PERIOD);
   const dipWindowCloses = closes.slice(-DCA_DIP_WINDOW_DAYS);
   const rollingLow = dipWindowCloses.length ? Math.min(...dipWindowCloses) : null;
+  const rollingHigh = dipWindowCloses.length ? Math.max(...dipWindowCloses) : null;
   // dipWindowCloses[last] is the most recent confirmed daily close (1 day ago, since today's
   // in-progress point is dropped by fetchTaHistory) — so days-ago counts back from that index.
   const rollingLowIndex = dipWindowCloses.length ? dipWindowCloses.indexOf(rollingLow) : -1;
   const rollingLowDaysAgo = rollingLowIndex >= 0 ? (dipWindowCloses.length - rollingLowIndex) : null;
+  const rollingHighIndex = dipWindowCloses.length ? dipWindowCloses.indexOf(rollingHigh) : -1;
+  const rollingHighDaysAgo = rollingHighIndex >= 0 ? (dipWindowCloses.length - rollingHighIndex) : null;
   const validRsi = rsiSeries.filter(v => v != null && !isNaN(v));
   let rsiOversoldThreshold = RSI_OVERSOLD;
   if (validRsi.length >= RSI_OVERSOLD_MIN_SAMPLES) {
     const sortedRsi = [...validRsi].sort((a, b) => a - b);
     const p = percentileOf(sortedRsi, RSI_OVERSOLD_PERCENTILE);
     if (p != null) rsiOversoldThreshold = Math.min(RSI_OVERSOLD_CEIL, Math.max(RSI_OVERSOLD_FLOOR, p));
+  }
+  let rsiOverboughtThreshold = RSI_OVERBOUGHT;
+  if (validRsi.length >= RSI_OVERBOUGHT_MIN_SAMPLES) {
+    const sortedRsiHigh = [...validRsi].sort((a, b) => a - b);
+    const pHigh = percentileOf(sortedRsiHigh, RSI_OVERBOUGHT_PERCENTILE);
+    if (pHigh != null) rsiOverboughtThreshold = Math.min(RSI_OVERBOUGHT_CEIL, Math.max(RSI_OVERBOUGHT_FLOOR, pHigh));
   }
   const avgDailyMove = calcAvgDailyMovePct(closes, DCA_VOL_LOOKBACK_DAYS);
   const volScale = avgDailyMove != null
@@ -755,12 +788,15 @@ function computeTaFromCloses(closes) {
   return {
     rsi: rsiSeries.length ? rsiSeries[rsiSeries.length - 1] : null,
     rsiOversoldThreshold,
+    rsiOverboughtThreshold,
     avgDailyMove,
     nearLowThresholdPct,
     athTiers,
     emaLong: emaLongSeries.length ? emaLongSeries[emaLongSeries.length - 1] : null,
     rollingLow,
     rollingLowDaysAgo,
+    rollingHigh,
+    rollingHighDaysAgo,
     rollingLowWindowDays: dipWindowCloses.length,
     closes,
     version: TA_LOGIC_VERSION,
@@ -787,9 +823,37 @@ async function fetchTaHistory(id) {
   }
 }
 
+// The daily "closes" above are one snapshot price per day (roughly midnight UTC) — they never see
+// the intraday wick a coin actually touched, so a rolling min/max of closes always understates the
+// real 90-day range you'd see on an exchange chart (Binance, TradingView etc). CoinGecko's OHLC
+// endpoint returns actual candle highs/lows instead — coarser (4-day candles this far back, per
+// CoinGecko's own bucketing) but still far closer to the real chart than a closes-only range.
+async function fetchOhlcExtremes(id, days) {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    const res = await fetch(`${API_BASE}/coins/${id}/ohlc?vs_currency=inr&days=${days}&x_cg_demo_api_key=${API_KEY}`, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    if (!res.ok) throw new Error(`HTTP_ERROR:${res.status}`);
+    const data = await res.json();
+    if (!Array.isArray(data) || !data.length) return null;
+    let highVal = -Infinity, highTs = null, lowVal = Infinity, lowTs = null;
+    for (const candle of data) {
+      if (!Array.isArray(candle) || candle.length < 5) continue;
+      const [ts, , high, low] = candle;
+      if (high != null && !isNaN(high) && high > highVal) { highVal = high; highTs = ts; }
+      if (low != null && !isNaN(low) && low < lowVal) { lowVal = low; lowTs = ts; }
+    }
+    if (!isFinite(highVal) || !isFinite(lowVal) || highTs == null || lowTs == null) return null;
+    return { high: highVal, highTs, low: lowVal, lowTs };
+  } catch (err) {
+    return null;
+  }
+}
+
 function auditTa(ta) {
   if (!ta) return true;
-  const fields = [ta.rsi, ta.emaLong, ta.rollingLow, ta.rsiOversoldThreshold, ta.nearLowThresholdPct,
+  const fields = [ta.rsi, ta.emaLong, ta.rollingLow, ta.rollingHigh, ta.rsiOversoldThreshold, ta.rsiOverboughtThreshold, ta.nearLowThresholdPct,
     ta.athTiers?.extreme, ta.athTiers?.deep, ta.athTiers?.moderate, ta.athTiers?.watch];
   return fields.every(v => v == null || !isNaN(v));
 }
@@ -812,6 +876,16 @@ async function fetchTaForPortfolio(ids, { force = false } = {}) {
     if (cached && cached.fetchVersion === TA_FETCH_VERSION && cached.version !== TA_LOGIC_VERSION && hasEnoughHistory(cached)) {
       const recomputedTa = computeTaFromCloses(cached.closes);
       if (recomputedTa && auditTa(recomputedTa)) {
+        // A logic-only recompute derives rolling extremes from `closes` again, which would quietly
+        // downgrade an already-fetched OHLC-sourced (true wick) high/low back to the closes-only
+        // approximation. Carry the OHLC overlay forward when this coin already has one.
+        if (cached.rollingExtremesSource === 'ohlc') {
+          recomputedTa.rollingHigh = cached.rollingHigh;
+          recomputedTa.rollingLow = cached.rollingLow;
+          recomputedTa.rollingHighDaysAgo = cached.rollingHighDaysAgo;
+          recomputedTa.rollingLowDaysAgo = cached.rollingLowDaysAgo;
+          recomputedTa.rollingExtremesSource = 'ohlc';
+        }
         recomputedTa.fetchVersion = TA_FETCH_VERSION;
         taCache[id] = recomputedTa;
         recomputed++;
@@ -842,6 +916,17 @@ async function fetchTaForPortfolio(ids, { force = false } = {}) {
     if (closes) {
       const ta = computeTaFromCloses(closes);
       if (ta && auditTa(ta)) {
+        await new Promise(r => setTimeout(r, 500));
+        const ohlcExtremes = await fetchOhlcExtremes(id, DCA_DIP_WINDOW_DAYS);
+        if (ohlcExtremes) {
+          ta.rollingHigh = ohlcExtremes.high;
+          ta.rollingLow = ohlcExtremes.low;
+          ta.rollingHighDaysAgo = daysSince(ohlcExtremes.highTs);
+          ta.rollingLowDaysAgo = daysSince(ohlcExtremes.lowTs);
+          ta.rollingExtremesSource = 'ohlc';
+        } else {
+          ta.rollingExtremesSource = 'closes';
+        }
         ta.fetchVersion = TA_FETCH_VERSION;
         taCache[id] = ta;
         updated++;
@@ -977,20 +1062,52 @@ function classifyHolding(md, item, ta, macroTa) {
   }
 
   const atlWithinWindow = (atlDate && ta?.rollingLowWindowDays != null) ? daysSince(atlDate) <= ta.rollingLowWindowDays : false;
+  // Folds in low_24h too, not just `cur` — without it, a coin that wicked below the rolling low
+  // intraday and then bounced back before this render would show a 90-day low that's contradicted
+  // by its own 24h range (low_24h < the "90-day" low), since the 24h window is always inside the
+  // 90-day one.
   const effectiveLow = (ta?.rollingLow != null && cur != null)
-    ? Math.min(ta.rollingLow, cur, (atlWithinWindow && atlValue != null) ? atlValue : Infinity)
+    ? Math.min(ta.rollingLow, cur, (low24h != null ? low24h : Infinity), (atlWithinWindow && atlValue != null) ? atlValue : Infinity)
     : null;
-  // True when today's live price (not a confirmed daily close) is what's setting the low —
-  // i.e. the coin is currently probing a fresh low intraday, so this figure will keep moving with price.
-  const isLiveLow = (effectiveLow != null && cur != null) && effectiveLow === cur && (ta?.rollingLow == null || cur < ta.rollingLow);
-  // Days ago for whichever source actually set effectiveLow: live price (today), a historical
-  // ATL that folded in because it's both within the window and lower than the rolling-close low,
-  // or the rolling-close low itself (position within the daily-closes window).
+  // True when something from today (live price or today's 24h-low reading) — not a confirmed prior
+  // extreme — is what's setting the low, i.e. the coin is currently probing a fresh low, so this
+  // figure will keep moving with price.
+  const isLiveLow = (effectiveLow != null && cur != null)
+    && (effectiveLow === cur || effectiveLow === low24h)
+    && (ta?.rollingLow == null || effectiveLow < ta.rollingLow);
+  // Days ago for whichever source actually set effectiveLow: today (live price or today's 24h low),
+  // a historical ATL that folded in because it's both within the window and lower than the
+  // rolling-close low, or the rolling-close low itself (position within the daily-closes window).
   const effectiveLowDaysAgo = isLiveLow
     ? 0
     : (atlWithinWindow && atlValue != null && effectiveLow === atlValue)
       ? daysSince(atlDate)
       : (ta?.rollingLowDaysAgo ?? null);
+  // CoinGecko's OHLC candles are 4 days wide this far back, so a rolling-low date pulled from one
+  // only pins the wick to *somewhere in that 4-day bucket* — not the exact day. Flag it so the UI
+  // doesn't imply false precision.
+  const lowDaysAgoApprox = !isLiveLow
+    && !(atlWithinWindow && atlValue != null && effectiveLow === atlValue)
+    && ta?.rollingExtremesSource === 'ohlc';
+
+  // Same construction as effectiveLow above, mirrored for the high: fold in the all-time-high
+  // when it falls within the rolling window, and let live price or today's 24h-high reading set a
+  // fresh intraday high (same reasoning as low24h above — the 24h window can't exceed the 90-day one).
+  const athWithinWindow = (athDate && ta?.rollingLowWindowDays != null) ? daysSince(athDate) <= ta.rollingLowWindowDays : false;
+  const effectiveHigh = (ta?.rollingHigh != null && cur != null)
+    ? Math.max(ta.rollingHigh, cur, (high24h != null ? high24h : -Infinity), (athWithinWindow && athValue != null) ? athValue : -Infinity)
+    : null;
+  const isLiveHigh = (effectiveHigh != null && cur != null)
+    && (effectiveHigh === cur || effectiveHigh === high24h)
+    && (ta?.rollingHigh == null || effectiveHigh > ta.rollingHigh);
+  const effectiveHighDaysAgo = isLiveHigh
+    ? 0
+    : (athWithinWindow && athValue != null && effectiveHigh === athValue)
+      ? daysSince(athDate)
+      : (ta?.rollingHighDaysAgo ?? null);
+  const highDaysAgoApprox = !isLiveHigh
+    && !(athWithinWindow && athValue != null && effectiveHigh === athValue)
+    && ta?.rollingExtremesSource === 'ohlc';
 
   const isDiscountCandidate = signal === 'WAIT';
   let dcaStreakDay = null;
@@ -1045,6 +1162,28 @@ function classifyHolding(md, item, ta, macroTa) {
     }
   }
 
+  // Interim range-trade signal: while a coin is just riding out a WAIT/HOLD stretch (not already
+  // an ACCUMULATE, the ATH-tier TRIM, or a risk/liquidity call), a confirmed poke at the top of its
+  // own recent range is a chance to bank a partial profit and rebuy lower — independent of whether
+  // the user's own longer-term sell target has been reached.
+  let nearHigh = false;
+  if (effectiveHigh != null && cur != null && signal !== 'EXIT' && signal !== 'AT RISK' && signal !== 'ACCUMULATE' && signal !== 'TRIM') {
+    const belowHighPct = (effectiveHigh - cur) / effectiveHigh * 100;
+    const nearHighThresholdPct = ta?.nearLowThresholdPct ?? DCA_DIP_NEAR_PCT;
+    nearHigh = belowHighPct <= nearHighThresholdPct;
+    const rsiOverboughtThreshold = ta?.rsiOverboughtThreshold ?? RSI_OVERBOUGHT;
+    const rsiOverbought = liveRsi != null && liveRsi >= rsiOverboughtThreshold;
+    const windowLabel = ta?.rollingLowWindowDays ?? DCA_DIP_WINDOW_DAYS;
+    if (nearHigh && rsiOverbought) {
+      signal = 'SWING TRIM'; colorKey = 'swing';
+      strength = Math.max(strength, 50);
+      const targetNote = item.target != null ? ` Still well short of your ₹${item.target} target, so this is a partial-profit/rebuy-lower play, not an exit.` : '';
+      reason = `${belowHighPct.toFixed(1)}% below its ${windowLabel}d high (within its own ≤${nearHighThresholdPct.toFixed(1)}% band), RSI ${liveRsi.toFixed(0)} (overbought vs this coin's own ≥${rsiOverboughtThreshold.toFixed(0)} top zone) — a reasonable spot to trim into strength.${targetNote}`;
+    } else if (nearHigh) {
+      reason = `${reason} Also ${belowHighPct.toFixed(1)}% below its ${windowLabel}d high, but RSI (${liveRsi == null ? '—' : liveRsi.toFixed(0)}) hasn't reached this coin's own overbought zone (≥${rsiOverboughtThreshold.toFixed(0)}) yet.`;
+    }
+  }
+
   const nearTarget = item.target && cur != null ? (cur >= item.target * (1 - TARGET_PROXIMITY_PCT / 100)) : false;
   if (nearTarget && signal !== 'EXIT' && signal !== 'AT RISK') {
     signal = 'TRIM'; colorKey = 'trim';
@@ -1058,14 +1197,22 @@ function classifyHolding(md, item, ta, macroTa) {
     change24h: md.change_24h, change7d: md.change_7d, change30d: md.change_30d,
     rsi: liveRsi,
     rsiOversoldThreshold: ta?.rsiOversoldThreshold ?? RSI_OVERSOLD,
+    rsiOverboughtThreshold: ta?.rsiOverboughtThreshold ?? RSI_OVERBOUGHT,
     nearLowThresholdPct: ta?.nearLowThresholdPct ?? DCA_DIP_NEAR_PCT,
     athTiers,
     emaLong: liveEmaLong,
     rollingLow: ta?.rollingLow ?? null,
     effectiveLow,
     effectiveLowDaysAgo,
+    lowDaysAgoApprox,
     isLiveLow,
+    rollingHigh: ta?.rollingHigh ?? null,
+    effectiveHigh,
+    effectiveHighDaysAgo,
+    highDaysAgoApprox,
+    isLiveHigh,
     rollingLowWindowDays: ta?.rollingLowWindowDays ?? null,
+    rollingExtremesSource: ta?.rollingExtremesSource ?? null,
     cmp: cur ?? null,
     relStrengthVsBtc,
     sentiment,
@@ -1275,7 +1422,7 @@ async function schedulePriceFetch() {
 }
 
 const SIGNAL_LABELS_SHORT = {
-  'ACCUMULATE': 'ADD', 'HOLD': 'HOLD', 'WAIT': 'WAIT', 'TRIM': 'TRIM',
+  'ACCUMULATE': 'ADD', 'HOLD': 'HOLD', 'WAIT': 'WAIT', 'TRIM': 'TRIM', 'SWING TRIM': 'SWING',
   'AT RISK': 'RISK', 'EXIT': 'EXIT', 'NA': 'N/A'
 };
 
@@ -1668,6 +1815,7 @@ function expandRowCore(tr, item, forceReExpand) {
     : 50;
   const atlIsCheap = pctAboveAtl != null && pctAboveAtl <= ATL_PROXIMITY_PCT;
   const lowIsNear = (ta.effectiveLow != null && ta.cmp != null) && ((ta.cmp - ta.effectiveLow) / ta.effectiveLow * 100) <= (ta.nearLowThresholdPct ?? DCA_DIP_NEAR_PCT);
+  const highIsNear = (ta.effectiveHigh != null && ta.cmp != null) && ((ta.effectiveHigh - ta.cmp) / ta.effectiveHigh * 100) <= (ta.nearLowThresholdPct ?? DCA_DIP_NEAR_PCT);
   const lastLog = dcaLogCache[item.id] ?? null;
   const showLogAction = ta.signal === 'ACCUMULATE';
   const dcaLogHtml = (!showLogAction && !lastLog) ? '' : `
@@ -1704,6 +1852,16 @@ function expandRowCore(tr, item, forceReExpand) {
           <div class="value ${atlIsCheap ? 'buy' : ''}">${ta.atlValue == null ? '—' : formatINR(ta.atlValue, precision)}</div>
           <div class="sub-value ${atlIsCheap ? 'buy' : ''}">${pctAboveAtl == null ? '—' : (pctAboveAtl >= 0 ? '+' : '') + pctAboveAtl.toFixed(1) + '%'}, ${ta.isLiveAtl ? 'today' : (atl == null ? '—' : atl + 'd ago')}</div>
         </div>
+        <div class="detail-item signal-input">
+          <div class="label">${ta.rollingLowWindowDays || DCA_DIP_WINDOW_DAYS}-Day Low${ta.isLiveLow ? ' <span>⚡</span>' : ''}${ta.rollingExtremesSource === 'closes' ? ' <span title="Exchange wick data unavailable — approximated from daily closes">≈</span>' : ''}</div>
+          <div class="value ${lowIsNear ? 'buy' : ''}">${ta.effectiveLow == null ? '—' : formatINR(ta.effectiveLow, precision)}</div>
+          <div class="sub-value ${lowIsNear ? 'buy' : ''}">${(ta.effectiveLow == null || ta.cmp == null) ? '—' : (((ta.cmp - ta.effectiveLow) / ta.effectiveLow * 100) >= 0 ? '+' : '') + ((ta.cmp - ta.effectiveLow) / ta.effectiveLow * 100).toFixed(1) + '% ' + (((ta.cmp - ta.effectiveLow) / ta.effectiveLow * 100) >= 0 ? 'above' : 'below') + ', ' + (ta.isLiveLow ? 'today' : (ta.effectiveLowDaysAgo == null ? '—' : (ta.lowDaysAgoApprox ? '~' : '') + ta.effectiveLowDaysAgo + 'd ago'))}</div>
+        </div>
+        <div class="detail-item signal-input">
+          <div class="label">${ta.rollingLowWindowDays || DCA_DIP_WINDOW_DAYS}-Day High${ta.isLiveHigh ? ' <span>⚡</span>' : ''}${ta.rollingExtremesSource === 'closes' ? ' <span title="Exchange wick data unavailable — approximated from daily closes">≈</span>' : ''}</div>
+          <div class="value ${highIsNear ? 'swing' : ''}">${ta.effectiveHigh == null ? '—' : formatINR(ta.effectiveHigh, precision)}</div>
+          <div class="sub-value ${highIsNear ? 'swing' : ''}">${(ta.effectiveHigh == null || ta.cmp == null) ? '—' : (((ta.cmp - ta.effectiveHigh) / ta.effectiveHigh * 100) >= 0 ? '+' : '') + ((ta.cmp - ta.effectiveHigh) / ta.effectiveHigh * 100).toFixed(1) + '% ' + (((ta.cmp - ta.effectiveHigh) / ta.effectiveHigh * 100) >= 0 ? 'above' : 'below') + ', ' + (ta.isLiveHigh ? 'today' : (ta.effectiveHighDaysAgo == null ? '—' : (ta.highDaysAgoApprox ? '~' : '') + ta.effectiveHighDaysAgo + 'd ago'))}</div>
+        </div>
       </div>
 
       <div class="detail-group-title">Liquidity</div>
@@ -1715,15 +1873,12 @@ function expandRowCore(tr, item, forceReExpand) {
       </div>
 
       <div class="detail-group-title">Technical Confirmation</div>
+      <div class="detail-grid detail-grid-headline">
+        <div class="detail-item detail-item-span2"><div class="label">Conviction</div><div class="value">${ta.strength}%</div></div>
+      </div>
       <div class="detail-grid">
-        <div class="detail-item"><div class="label">Conviction</div><div class="value">${ta.strength}%</div></div>
-        <div class="detail-item"><div class="label">RSI (14, live)</div><div class="value ${ta.rsi != null && ta.rsi <= (ta.rsiOversoldThreshold ?? RSI_OVERSOLD) ? 'buy' : ta.rsi != null && ta.rsi >= RSI_OVERBOUGHT ? 'sell' : 'rsi-value'}">${ta.rsi == null ? '—' : ta.rsi.toFixed(0)}</div><div class="sub-value">oversold ≤${(ta.rsiOversoldThreshold ?? RSI_OVERSOLD).toFixed(0)}</div></div>
+        <div class="detail-item signal-input"><div class="label">RSI (14, live)</div><div class="value ${ta.rsi != null && ta.rsi <= (ta.rsiOversoldThreshold ?? RSI_OVERSOLD) ? 'buy' : ta.rsi != null && ta.rsi >= (ta.rsiOverboughtThreshold ?? RSI_OVERBOUGHT) ? 'sell' : 'rsi-value'}">${ta.rsi == null ? '—' : ta.rsi.toFixed(0)}</div><div class="sub-value">≤${(ta.rsiOversoldThreshold ?? RSI_OVERSOLD).toFixed(0)} oversold · ≥${(ta.rsiOverboughtThreshold ?? RSI_OVERBOUGHT).toFixed(0)} overbought</div></div>
         <div class="detail-item"><div class="label">CMP → EMA 200 (live)</div><div class="value target-pct">${(ta.emaLong == null || ta.cmp == null) ? '—' : (((ta.emaLong - ta.cmp) / ta.cmp * 100) >= 0 ? '+' : '') + ((ta.emaLong - ta.cmp) / ta.cmp * 100).toFixed(1) + '% (' + formatINR(ta.emaLong, precision) + ')'}</div></div>
-        <div class="detail-item">
-          <div class="label">${ta.rollingLowWindowDays || DCA_DIP_WINDOW_DAYS}-Day Low${ta.isLiveLow ? ' <span>⚡</span>' : ''}</div>
-          <div class="value ${lowIsNear ? 'buy' : ''}">${ta.effectiveLow == null ? '—' : formatINR(ta.effectiveLow, precision)}</div>
-          <div class="sub-value ${lowIsNear ? 'buy' : ''}">${(ta.effectiveLow == null || ta.cmp == null) ? '—' : (((ta.cmp - ta.effectiveLow) / ta.effectiveLow * 100) >= 0 ? '+' : '') + ((ta.cmp - ta.effectiveLow) / ta.effectiveLow * 100).toFixed(1) + '% ' + (((ta.cmp - ta.effectiveLow) / ta.effectiveLow * 100) >= 0 ? 'above' : 'below') + ', ' + (ta.isLiveLow ? 'today' : (ta.effectiveLowDaysAgo == null ? '—' : ta.effectiveLowDaysAgo + 'd ago'))}</div>
-        </div>
         <div class="detail-item"><div class="label">Sentiment (20/50 EMA, live)</div><div class="value ${ta.sentiment === 'Bullish' ? 'buy' : ta.sentiment === 'Bearish' ? 'sell' : ''}">${ta.sentiment == null ? '—' : ta.sentiment}</div></div>
         <div class="detail-item"><div class="label">Rel. Strength (${REL_STRENGTH_WINDOW_DAYS}d vs BTC)</div><div class="value ${ta.relStrengthVsBtc > 0 ? 'buy' : ta.relStrengthVsBtc < 0 ? 'sell' : ''}">${ta.relStrengthVsBtc == null ? '—' : (ta.relStrengthVsBtc >= 0 ? '+' : '') + ta.relStrengthVsBtc.toFixed(1) + 'pp (' + (ta.relStrengthVsBtc > 0 ? 'Outperforming' : 'Underperforming') + ')'}</div></div>
       </div>
@@ -1856,7 +2011,7 @@ async function discoverCandidates() {
         if (ta && auditTa(ta) && ta.rollingLow != null) {
           const cur = md.current_price;
           const atlWithinWindow = md.atl_date ? daysSince(md.atl_date) <= ta.rollingLowWindowDays : false;
-          const effectiveLow = Math.min(ta.rollingLow, cur, (atlWithinWindow && md.atl != null) ? md.atl : Infinity);
+          const effectiveLow = Math.min(ta.rollingLow, cur, (md.low_24h != null ? md.low_24h : Infinity), (atlWithinWindow && md.atl != null) ? md.atl : Infinity);
           const aboveLow = (cur - effectiveLow) / effectiveLow * 100;
           const nearLowThresholdPct = ta.nearLowThresholdPct ?? DCA_DIP_NEAR_PCT;
           const nearLow = aboveLow <= nearLowThresholdPct;
