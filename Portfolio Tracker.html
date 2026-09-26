@@ -1142,7 +1142,7 @@ function classifyHolding(md, item, ta, macroTa) {
           strength = Math.round(Math.min(60, strength + 30) + relStrengthBonus);
           const gapNote = lastLog == null ? '' : ` Also ${gapPct.toFixed(1)}% below last DCA (${formatINR(lastLog.price, pricePrecisionFor(lastLog.price))}) — a real step down.`;
           const streakNote = dcaStreakDay === 1 ? 'First flagged today.' : `Day ${dcaStreakDay} of this dip.`;
-          reason = `${depth.toFixed(0)}% below ATH, ${aboveLow.toFixed(1)}% above its ${ta.rollingLowWindowDays}d low (within this coin's own ≤${nearLowThresholdPct.toFixed(1)}% band), RSI ${liveRsi.toFixed(0)} (oversold vs this coin's own ≤${rsiThreshold.toFixed(0)} bottom zone) — conditions met. ${streakNote}${gapNote}${relStrengthNote}`;
+          reason = `${depth.toFixed(0)}% below ATH, ${aboveLow.toFixed(1)}% above its ${ta.rollingLowWindowDays}d low (within this coin's own ≤${nearLowThresholdPct.toFixed(1)}% band), RSI ${liveRsi.toFixed(2)} (oversold vs this coin's own ≤${rsiThreshold.toFixed(0)} bottom zone) — conditions met. ${streakNote}${gapNote}${relStrengthNote}`;
         } else {
           const nextDcaPrice = lastLog.price * (1 - dynGapPct / 100);
           const positionNote = gapPct >= 0
@@ -1152,7 +1152,7 @@ function classifyHolding(md, item, ta, macroTa) {
         }
       } else {
         if (nearLow && !rsiOversold) {
-          reason = `${depth.toFixed(0)}% below ATH, near its ${ta.rollingLowWindowDays}d low, but RSI (${liveRsi == null ? '—' : liveRsi.toFixed(0)}) hasn't reached this coin's own oversold zone (≤${rsiThreshold.toFixed(0)}) yet.`;
+          reason = `${depth.toFixed(0)}% below ATH, near its ${ta.rollingLowWindowDays}d low, but RSI (${liveRsi == null ? '—' : liveRsi.toFixed(2)}) hasn't reached this coin's own oversold zone (≤${rsiThreshold.toFixed(0)}) yet.`;
         } else {
           reason = `${depth.toFixed(0)}% below ATH, but ${Math.abs(aboveLow).toFixed(1)}% ${aboveLow >= 0 ? 'above' : 'below'} its ${ta.rollingLowWindowDays}d low — outside this coin's own ≤${nearLowThresholdPct.toFixed(1)}% near-low band.`;
         }
@@ -1178,9 +1178,9 @@ function classifyHolding(md, item, ta, macroTa) {
       signal = 'SWING TRIM'; colorKey = 'swing';
       strength = Math.max(strength, 50);
       const targetNote = item.target != null ? ` Still well short of your ₹${item.target} target, so this is a partial-profit/rebuy-lower play, not an exit.` : '';
-      reason = `${belowHighPct.toFixed(1)}% below its ${windowLabel}d high (within its own ≤${nearHighThresholdPct.toFixed(1)}% band), RSI ${liveRsi.toFixed(0)} (overbought vs this coin's own ≥${rsiOverboughtThreshold.toFixed(0)} top zone) — a reasonable spot to trim into strength.${targetNote}`;
+      reason = `${belowHighPct.toFixed(1)}% below its ${windowLabel}d high (within its own ≤${nearHighThresholdPct.toFixed(1)}% band), RSI ${liveRsi.toFixed(2)} (overbought vs this coin's own ≥${rsiOverboughtThreshold.toFixed(0)} top zone) — a reasonable spot to trim into strength.${targetNote}`;
     } else if (nearHigh) {
-      reason = `${reason} Also ${belowHighPct.toFixed(1)}% below its ${windowLabel}d high, but RSI (${liveRsi == null ? '—' : liveRsi.toFixed(0)}) hasn't reached this coin's own overbought zone (≥${rsiOverboughtThreshold.toFixed(0)}) yet.`;
+      reason = `${reason} Also ${belowHighPct.toFixed(1)}% below its ${windowLabel}d high, but RSI (${liveRsi == null ? '—' : liveRsi.toFixed(2)}) hasn't reached this coin's own overbought zone (≥${rsiOverboughtThreshold.toFixed(0)}) yet.`;
     }
   }
 
@@ -1877,7 +1877,7 @@ function expandRowCore(tr, item, forceReExpand) {
         <div class="detail-item detail-item-span2"><div class="label">Conviction</div><div class="value">${ta.strength}%</div></div>
       </div>
       <div class="detail-grid">
-        <div class="detail-item signal-input"><div class="label">RSI (14, live)</div><div class="value ${ta.rsi != null && ta.rsi <= (ta.rsiOversoldThreshold ?? RSI_OVERSOLD) ? 'buy' : ta.rsi != null && ta.rsi >= (ta.rsiOverboughtThreshold ?? RSI_OVERBOUGHT) ? 'sell' : 'rsi-value'}">${ta.rsi == null ? '—' : ta.rsi.toFixed(0)}</div><div class="sub-value">≤${(ta.rsiOversoldThreshold ?? RSI_OVERSOLD).toFixed(0)} oversold · ≥${(ta.rsiOverboughtThreshold ?? RSI_OVERBOUGHT).toFixed(0)} overbought</div></div>
+        <div class="detail-item signal-input"><div class="label">RSI (14, live)</div><div class="value ${ta.rsi != null && ta.rsi <= (ta.rsiOversoldThreshold ?? RSI_OVERSOLD) ? 'buy' : ta.rsi != null && ta.rsi >= (ta.rsiOverboughtThreshold ?? RSI_OVERBOUGHT) ? 'sell' : 'rsi-value'}">${ta.rsi == null ? '—' : ta.rsi.toFixed(2)}</div><div class="sub-value">≤${(ta.rsiOversoldThreshold ?? RSI_OVERSOLD).toFixed(0)} oversold · ≥${(ta.rsiOverboughtThreshold ?? RSI_OVERBOUGHT).toFixed(0)} overbought</div></div>
         <div class="detail-item"><div class="label">CMP → EMA 200 (live)</div><div class="value target-pct">${(ta.emaLong == null || ta.cmp == null) ? '—' : (((ta.emaLong - ta.cmp) / ta.cmp * 100) >= 0 ? '+' : '') + ((ta.emaLong - ta.cmp) / ta.cmp * 100).toFixed(1) + '% (' + formatINR(ta.emaLong, precision) + ')'}</div></div>
         <div class="detail-item"><div class="label">Sentiment (20/50 EMA, live)</div><div class="value ${ta.sentiment === 'Bullish' ? 'buy' : ta.sentiment === 'Bearish' ? 'sell' : ''}">${ta.sentiment == null ? '—' : ta.sentiment}</div></div>
         <div class="detail-item"><div class="label">Rel. Strength (${REL_STRENGTH_WINDOW_DAYS}d vs BTC)</div><div class="value ${ta.relStrengthVsBtc > 0 ? 'buy' : ta.relStrengthVsBtc < 0 ? 'sell' : ''}">${ta.relStrengthVsBtc == null ? '—' : (ta.relStrengthVsBtc >= 0 ? '+' : '') + ta.relStrengthVsBtc.toFixed(1) + 'pp (' + (ta.relStrengthVsBtc > 0 ? 'Outperforming' : 'Underperforming') + ')'}</div></div>
@@ -2043,7 +2043,7 @@ async function discoverCandidates() {
           <span><span class="dc-symbol">${c.symbol}</span><span class="dc-name">${c.name}</span></span>
           <button class="dc-add">+ Add</button>
         </div>
-        <div class="dc-reason">${Math.abs(c.athPct).toFixed(0)}% below ATH, ${c.aboveLow.toFixed(1)}% above its ${c.windowDays}d low (within its own ≤${c.nearLowThresholdPct.toFixed(1)}% band), RSI ${c.rsi.toFixed(0)} (below its own ≤${c.rsiThreshold.toFixed(0)} bottom zone)${c.rank ? ` · rank #${c.rank}` : ''} — meets the same ACCUMULATE conditions as your holdings.</div>
+        <div class="dc-reason">${Math.abs(c.athPct).toFixed(0)}% below ATH, ${c.aboveLow.toFixed(1)}% above its ${c.windowDays}d low (within its own ≤${c.nearLowThresholdPct.toFixed(1)}% band), RSI ${c.rsi.toFixed(2)} (below its own ≤${c.rsiThreshold.toFixed(0)} bottom zone)${c.rank ? ` · rank #${c.rank}` : ''} — meets the same ACCUMULATE conditions as your holdings.</div>
       </div>
     `).join('');
 
