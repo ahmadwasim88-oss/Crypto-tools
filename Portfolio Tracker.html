@@ -2070,18 +2070,21 @@ discoverBtn.onclick = discoverCandidates;
 gainHeader.addEventListener('click', () => {
   sortDir = currentSortColumn === 'gain' ? (sortDir === 'desc' ? 'asc' : 'desc') : 'desc';
   currentSortColumn = 'gain';
+  expandedRowId = null; // re-sorting moves rows around, so keeping one open mid-move felt disorienting
   applyCurrentSort();
 });
 
 priceHeader.addEventListener('click', () => {
   sortDir = currentSortColumn === 'change24h' ? (sortDir === 'desc' ? 'asc' : 'desc') : 'desc';
   currentSortColumn = 'change24h';
+  expandedRowId = null;
   applyCurrentSort();
 });
 
 signalHeader.addEventListener('click', () => {
   sortDir = currentSortColumn === 'signal' ? (sortDir === 'desc' ? 'asc' : 'desc') : 'desc';
   currentSortColumn = 'signal';
+  expandedRowId = null;
   applyCurrentSort();
 });
 
