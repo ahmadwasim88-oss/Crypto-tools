@@ -950,6 +950,30 @@ async function fetchTaForPortfolio(ids, { force = false } = {}) {
 }
 
 
+// RSI (14) as it stood on the day the 90d low/high was set. `rsiSeries` is aligned with
+// closes.concat([cur]), so index (len-1-k) is the close from k days ago and k=0 is the live reading.
+// When the extreme came from a 4-day OHLC candle the exact day is unknown, so we look at the
+// candle's 4-day span and use the day whose close sits nearest the extreme price.
+function rsiAtExtreme(rsiSeries, closes, daysAgo, isLive, approx, price) {
+  if (!rsiSeries || !rsiSeries.length || daysAgo == null) return null;
+  const n = rsiSeries.length;
+  if (isLive || daysAgo <= 0) return rsiSeries[n - 1] ?? null;
+  let k = daysAgo;
+  if (approx && closes && price != null) {
+    let best = Infinity;
+    for (let j = Math.max(1, daysAgo - 3); j <= daysAgo; j++) {
+      const c = closes[closes.length - j];
+      if (c == null) continue;
+      const diff = Math.abs(c - price);
+      if (diff < best) { best = diff; k = j; }
+    }
+  }
+  const idx = n - 1 - k;
+  if (idx < 0) return null;
+  const v = rsiSeries[idx];
+  return (v == null || isNaN(v)) ? null : v;
+}
+
 function classifyHolding(md, item, ta, macroTa) {
   if (!md) {
     return {
@@ -1108,6 +1132,8 @@ function classifyHolding(md, item, ta, macroTa) {
   const highDaysAgoApprox = !isLiveHigh
     && !(athWithinWindow && athValue != null && effectiveHigh === athValue)
     && ta?.rollingExtremesSource === 'ohlc';
+  const lowRsi = rsiAtExtreme(liveRsiSeries, ta?.closes, effectiveLowDaysAgo, isLiveLow, lowDaysAgoApprox, effectiveLow);
+  const highRsi = rsiAtExtreme(liveRsiSeries, ta?.closes, effectiveHighDaysAgo, isLiveHigh, highDaysAgoApprox, effectiveHigh);
 
   const isDiscountCandidate = signal === 'WAIT';
   let dcaStreakDay = null;
@@ -1205,11 +1231,13 @@ function classifyHolding(md, item, ta, macroTa) {
     effectiveLow,
     effectiveLowDaysAgo,
     lowDaysAgoApprox,
+    lowRsi,
     isLiveLow,
     rollingHigh: ta?.rollingHigh ?? null,
     effectiveHigh,
     effectiveHighDaysAgo,
     highDaysAgoApprox,
+    highRsi,
     isLiveHigh,
     rollingLowWindowDays: ta?.rollingLowWindowDays ?? null,
     rollingExtremesSource: ta?.rollingExtremesSource ?? null,
@@ -1856,11 +1884,13 @@ function expandRowCore(tr, item, forceReExpand) {
           <div class="label">${ta.rollingLowWindowDays || DCA_DIP_WINDOW_DAYS}-Day Low${ta.isLiveLow ? ' <span>⚡</span>' : ''}${ta.rollingExtremesSource === 'closes' ? ' <span title="Exchange wick data unavailable — approximated from daily closes">≈</span>' : ''}</div>
           <div class="value ${lowIsNear ? 'buy' : ''}">${ta.effectiveLow == null ? '—' : formatINR(ta.effectiveLow, precision)}</div>
           <div class="sub-value ${lowIsNear ? 'buy' : ''}">${(ta.effectiveLow == null || ta.cmp == null) ? '—' : (((ta.cmp - ta.effectiveLow) / ta.effectiveLow * 100) >= 0 ? '+' : '') + ((ta.cmp - ta.effectiveLow) / ta.effectiveLow * 100).toFixed(1) + '% ' + (((ta.cmp - ta.effectiveLow) / ta.effectiveLow * 100) >= 0 ? 'above' : 'below') + ', ' + (ta.isLiveLow ? 'today' : (ta.effectiveLowDaysAgo == null ? '—' : (ta.lowDaysAgoApprox ? '~' : '') + ta.effectiveLowDaysAgo + 'd ago'))}</div>
+          <div class="sub-value" title="RSI (14) on the day the low was set${ta.lowDaysAgoApprox ? ' — approximate, low came from a 4-day candle' : ''}">RSI at low: ${ta.lowRsi == null ? '—' : (ta.lowDaysAgoApprox ? '~' : '') + ta.lowRsi.toFixed(2)}</div>
         </div>
         <div class="detail-item signal-input">
           <div class="label">${ta.rollingLowWindowDays || DCA_DIP_WINDOW_DAYS}-Day High${ta.isLiveHigh ? ' <span>⚡</span>' : ''}${ta.rollingExtremesSource === 'closes' ? ' <span title="Exchange wick data unavailable — approximated from daily closes">≈</span>' : ''}</div>
           <div class="value ${highIsNear ? 'swing' : ''}">${ta.effectiveHigh == null ? '—' : formatINR(ta.effectiveHigh, precision)}</div>
           <div class="sub-value ${highIsNear ? 'swing' : ''}">${(ta.effectiveHigh == null || ta.cmp == null) ? '—' : (((ta.cmp - ta.effectiveHigh) / ta.effectiveHigh * 100) >= 0 ? '+' : '') + ((ta.cmp - ta.effectiveHigh) / ta.effectiveHigh * 100).toFixed(1) + '% ' + (((ta.cmp - ta.effectiveHigh) / ta.effectiveHigh * 100) >= 0 ? 'above' : 'below') + ', ' + (ta.isLiveHigh ? 'today' : (ta.effectiveHighDaysAgo == null ? '—' : (ta.highDaysAgoApprox ? '~' : '') + ta.effectiveHighDaysAgo + 'd ago'))}</div>
+          <div class="sub-value" title="RSI (14) on the day the high was set${ta.highDaysAgoApprox ? ' — approximate, high came from a 4-day candle' : ''}">RSI at high: ${ta.highRsi == null ? '—' : (ta.highDaysAgoApprox ? '~' : '') + ta.highRsi.toFixed(2)}</div>
         </div>
       </div>
 
