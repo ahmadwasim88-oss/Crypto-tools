@@ -81,6 +81,194 @@
       box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
       background: linear-gradient(135deg, #2575fc, #6a11cb);
     }
+
+    /* --- Market Pulse --- */
+        .pulse {
+      width: 0;
+      min-width: 100%;
+    }
+    
+    .pulse-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.7rem;
+      color: #888;
+      margin-bottom: 6px;
+      white-space: nowrap;
+    }
+    
+    .pulse-head b {
+      color: #555;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    
+    #pulseRefresh {
+      width: auto;
+      padding: 0 6px;
+      margin: 0 0 0 4px;
+      background: none;
+      color: #6a11cb;
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+    
+    #pulseDots {
+      display: inline-flex;
+    }
+    
+    #pulseDots i {
+      width: 13px;
+      height: 22px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+    
+    #pulseDots i::before {
+      content: "";
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: #ccc;
+      transition: all 0.2s;
+    }
+    
+    #pulseDots i.on::before {
+      width: 7px;
+      height: 7px;
+      background: #6a11cb;
+    }
+    
+    .pulse-grid {
+      display: none;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    
+    .pulse-grid.on {
+      display: grid;
+      animation: pageIn 0.22s ease;
+    }
+    
+    @keyframes pageIn {
+      from { opacity: 0; transform: translateX(var(--dx, 14px)); }
+      to { opacity: 1; transform: none; }
+    }
+    
+    .tile {
+      background: #fff;
+      border-radius: 12px;
+      padding: 6px 6px 7px;
+      min-height: 70px;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.07);
+    }
+    
+    .tile.tall {
+      min-height: 148px;
+    }
+    
+    .t-label {
+      font-size: 0.62rem;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      white-space: nowrap;
+    }
+    
+    .t-value {
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: #333;
+      line-height: 1.25;
+    }
+    
+    .t-value.sm {
+      font-size: 1rem;
+      line-height: 1.6;
+    }
+    
+    .t-sub {
+      font-size: 0.62rem;
+      color: #777;
+      min-height: 1em;
+      white-space: nowrap;
+    }
+    
+    .t-list {
+      font-size: 0.68rem;
+      line-height: 1.55;
+      white-space: nowrap;
+    }
+    
+    .t-list div {
+      display: flex;
+      justify-content: space-between;
+    }
+    
+    .t-bar {
+      height: 4px;
+      background: #eee;
+      border-radius: 3px;
+      overflow: hidden;
+      margin-top: 4px;
+    }
+    
+    .t-bar > div {
+      height: 100%;
+      width: 0;
+      background: #6a11cb;
+      transition: width 0.5s ease;
+    }
+    
+    .up {
+      color: #16a34a;
+    }
+    
+    .down {
+      color: #dc2626;
+    }
+    
+    .sentiment {
+      margin-top: 8px;
+    }
+    
+    .sentiment-top {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.62rem;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      white-space: nowrap;
+    }
+    
+    .sentiment-top b {
+      color: #555;
+    }
+    
+    .sentiment-bar {
+      position: relative;
+      height: 8px;
+      border-radius: 4px;
+      margin-top: 5px;
+      background: linear-gradient(90deg, #dc2626, #f59e0b, #16a34a);
+    }
+    
+    .sentiment-bar i {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #fff;
+      border: 2px solid #333;
+      transform: translate(-50%, -50%);
+      transition: left 0.5s ease;
+    }
     
     /* --- Mini Circular Widget --- */
     #mini {
@@ -248,6 +436,97 @@
       <a href="Percentage Calculators.html">Percentage Calculators</a>
       <a href="ohlcv.html">OHLCV</a>
     </div>
+
+    <!-- Market Pulse -->
+    <div class="pulse">
+      <div class="pulse-head">
+        <b id="pulseTitle">Market Pulse</b>
+        <span id="pulseDots"></span>
+        <span><span id="pulseUpdated">loading…</span> <button id="pulseRefresh" type="button">↻</button></span>
+      </div>
+      <div class="pulse-grid on" data-title="Market Pulse">
+        <div class="tile">
+          <div class="t-label">Fear &amp; Greed</div>
+          <div class="t-value" id="fngVal">—</div>
+          <div class="t-sub" id="fngSub">&nbsp;</div>
+          <div class="t-bar"><div id="fngBar"></div></div>
+        </div>
+        <div class="tile">
+          <div class="t-label">Altcoin Season (90d)</div>
+          <div class="t-value" id="altVal">—</div>
+          <div class="t-sub" id="altSub">&nbsp;</div>
+          <div class="t-bar"><div id="altBar"></div></div>
+        </div>
+        <div class="tile">
+          <div class="t-label">BTC Dominance</div>
+          <div class="t-value" id="domVal">—</div>
+          <div class="t-sub" id="domSub">&nbsp;</div>
+        </div>
+        <div class="tile">
+          <div class="t-label">Total Market Cap</div>
+          <div class="t-value" id="capVal">—</div>
+          <div class="t-sub" id="capSub">&nbsp;</div>
+        </div>
+      </div>
+      <div class="pulse-grid" data-title="Prices">
+        <div class="tile">
+          <div class="t-label">BTC</div>
+          <div class="t-value" id="btcVal">—</div>
+          <div class="t-sub" id="btcSub">&nbsp;</div>
+        </div>
+        <div class="tile">
+          <div class="t-label">ETH</div>
+          <div class="t-value" id="ethVal">—</div>
+          <div class="t-sub" id="ethSub">&nbsp;</div>
+        </div>
+        <div class="tile">
+          <div class="t-label">USDT / INR</div>
+          <div class="t-value" id="inrVal">—</div>
+          <div class="t-sub" id="inrSub">&nbsp;</div>
+        </div>
+        <div class="tile">
+          <div class="t-label">BTC Funding</div>
+          <div class="t-value sm" id="fundVal">—</div>
+          <div class="t-sub" id="fundSub">&nbsp;</div>
+        </div>
+      </div>
+      <div class="pulse-grid" data-title="Cycle Heat">
+        <div class="tile">
+          <div class="t-label">Pi Cycle to trigger</div>
+          <div class="t-value sm" id="piVal">—</div>
+          <div class="t-sub" id="piSub">&nbsp;</div>
+        </div>
+        <div class="tile">
+          <div class="t-label">Mayer Multiple</div>
+          <div class="t-value" id="mayVal">—</div>
+          <div class="t-sub" id="maySub">&nbsp;</div>
+        </div>
+        <div class="tile">
+          <div class="t-label">Weekly RSI</div>
+          <div class="t-value" id="rsiVal">—</div>
+          <div class="t-sub" id="rsiSub">&nbsp;</div>
+        </div>
+        <div class="tile">
+          <div class="t-label">From ATH</div>
+          <div class="t-value" id="athVal">—</div>
+          <div class="t-sub" id="athSub">&nbsp;</div>
+        </div>
+      </div>
+      <div class="pulse-grid" data-title="Movers">
+        <div class="tile tall">
+          <div class="t-label">Top gainers 24h</div>
+          <div class="t-list" id="gainList">—</div>
+        </div>
+        <div class="tile tall">
+          <div class="t-label">Top losers 24h</div>
+          <div class="t-list" id="loseList">—</div>
+        </div>
+      </div>
+      <div class="sentiment">
+        <div class="sentiment-top"><span>Bearish</span><b id="sentText">—</b><span>Bullish</span></div>
+        <div class="sentiment-bar"><i id="sentDot"></i></div>
+      </div>
+    </div>
   </div>
   
   <!-- Mini collapsed -->
@@ -318,9 +597,12 @@
     document.addEventListener("visibilitychange", () => {
       if (document.hidden) {
         stopTicking();
-      } else if (widgetActive) {
-        update();
-        startTicking();
+      } else {
+        if (widgetActive) {
+          update();
+          startTicking();
+        }
+        if (Date.now() - lastPulse > PULSE_EVERY) loadPulse();
       }
     });
 
@@ -456,6 +738,7 @@
       settings.style.display = 'none';
       widget.style.display = 'block';
       mini.style.display = 'none';
+      card.style.display = 'block';
       editBtn.style.display = 'block';
       collapsed = false;
       widgetActive = true;
@@ -503,6 +786,280 @@
       mini.style.display = 'flex';
       editBtn.style.display = 'none';
     });
+
+    /* ================= Market Pulse ================= */
+    const PULSE_EVERY = 5 * 60 * 1000; // refresh every 5 minutes
+    let lastPulse = 0;
+    let pulseBusy = false;
+    const $ = (id) => document.getElementById(id);
+    const sent = {}; // inputs for the sentiment meter, filled in by the loaders below
+
+    async function getJSON(url) {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(url + " → " + r.status);
+      return r.json();
+    }
+
+    // Binance public data, with the data mirror as a fallback host
+    const BN_HOSTS = ["https://api.binance.com", "https://data-api.binance.vision"];
+    async function bn(path) {
+      let err;
+      for (const h of BN_HOSTS) {
+        try { return await getJSON(h + path); } catch (e) { err = e; }
+      }
+      throw err;
+    }
+
+    function fmtCap(n) {
+      if (n >= 1e12) return "$" + (n / 1e12).toFixed(2) + "T";
+      if (n >= 1e9) return "$" + (n / 1e9).toFixed(1) + "B";
+      return "$" + Math.round(n).toLocaleString();
+    }
+
+    const fmtUSD = (n) => "$" + (n >= 1000 ? Math.round(n).toLocaleString("en-US") : n.toFixed(2));
+
+    function pctHTML(p) {
+      const cls = p >= 0 ? "up" : "down";
+      return `<span class="${cls}">${p >= 0 ? "▲" : "▼"} ${Math.abs(p).toFixed(2)}% 24h</span>`;
+    }
+
+    const pctTxt = (p) => `<b class="${p >= 0 ? "up" : "down"}">${p >= 0 ? "+" : ""}${p.toFixed(1)}%</b>`;
+
+    // Fear & Greed (alternative.me)
+    async function loadFng() {
+      delete sent.fng;
+      const d = (await getJSON("https://api.alternative.me/fng/?limit=2")).data;
+      const v = +d[0].value, prev = d[1] ? +d[1].value : null;
+      sent.fng = v;
+      $("fngVal").textContent = v;
+      $("fngVal").style.color = `hsl(${v * 1.2}, 65%, 42%)`;
+      $("fngSub").textContent = d[0].value_classification + (prev !== null ? ` (yday ${prev})` : "");
+      $("fngBar").style.width = v + "%";
+      $("fngBar").style.background = `hsl(${v * 1.2}, 65%, 45%)`;
+    }
+
+    // BTC dominance + total market cap (CoinGecko /global)
+    async function loadGlobal() {
+      const g = (await getJSON("https://api.coingecko.com/api/v3/global")).data;
+      $("domVal").textContent = g.market_cap_percentage.btc.toFixed(1) + "%";
+      $("domSub").textContent = "ETH " + g.market_cap_percentage.eth.toFixed(1) + "%";
+      $("capVal").textContent = fmtCap(g.total_market_cap.usd);
+      $("capSub").innerHTML = pctHTML(g.market_cap_change_percentage_24h_usd);
+    }
+
+    // Altcoin Season (CMC-style, 90d): share of ~45 major alts that beat BTC over 90 days.
+    // Uses Binance daily candles; cached 1h since it moves slowly.
+    const ALTS = ["ETH","BNB","XRP","SOL","ADA","DOGE","TRX","AVAX","LINK","DOT","LTC","BCH","NEAR","UNI","ATOM","ETC","XLM","FIL","APT","ARB","OP","INJ","SUI","AAVE","MKR","ICP","HBAR","VET","ALGO","GRT","SAND","MANA","EGLD","RUNE","IMX","LDO","STX","TIA","SEI","PEPE","SHIB","TON","ONDO","TAO","WLD"];
+    const WATCH = ["BTC"].concat(ALTS); // edit this list to match your own watchlist
+
+    async function change90(sym) {
+      const k = await bn(`/api/v3/klines?symbol=${sym}USDT&interval=1d&limit=91`);
+      if (k.length < 91) return null;
+      return (parseFloat(k[90][4]) / parseFloat(k[0][4]) - 1) * 100;
+    }
+
+    function showAlt({ idx, beat, n }) {
+      sent.alt = idx;
+      $("altVal").textContent = idx;
+      $("altSub").textContent = (idx >= 75 ? "Altcoin Season" : idx <= 25 ? "Bitcoin Season" : "Mixed") + ` · ${beat}/${n}`;
+      $("altBar").style.width = idx + "%";
+    }
+
+    async function loadAlt() {
+      delete sent.alt;
+      try {
+        const c = JSON.parse(localStorage.getItem("altIdx") || "null");
+        if (c && Date.now() - c.t < 3600e3) return showAlt(c);
+      } catch (e) {}
+      const btc = await change90("BTC");
+      const res = await Promise.allSettled(ALTS.map(change90));
+      const vals = res.filter((r) => r.status === "fulfilled" && r.value !== null).map((r) => r.value);
+      if (vals.length < 20) throw new Error("Too few Binance results");
+      const beat = vals.filter((v) => v > btc).length;
+      const data = { t: Date.now(), idx: Math.round((beat / vals.length) * 100), beat, n: vals.length };
+      try { localStorage.setItem("altIdx", JSON.stringify(data)); } catch (e) {}
+      showAlt(data);
+    }
+
+    // Prices + movers: one Binance call
+    async function loadTickers() {
+      const syms = WATCH.map((x) => x + "USDT");
+      const t = await bn("/api/v3/ticker/24hr?symbols=" + encodeURIComponent(JSON.stringify(syms)));
+      const by = {};
+      t.forEach((x) => (by[x.symbol] = x));
+      [["BTC", "btc"], ["ETH", "eth"]].forEach(([c, id]) => {
+        const x = by[c + "USDT"];
+        $(id + "Val").textContent = fmtUSD(+x.lastPrice);
+        $(id + "Sub").innerHTML = pctHTML(+x.priceChangePercent);
+      });
+      const arr = t.map((x) => ({ s: x.symbol.replace("USDT", ""), p: +x.priceChangePercent })).sort((a, b) => b.p - a.p);
+      const row = (x) => `<div><span>${x.s}</span>${pctTxt(x.p)}</div>`;
+      $("gainList").innerHTML = arr.slice(0, 5).map(row).join("");
+      $("loseList").innerHTML = arr.slice(-5).reverse().map(row).join("");
+    }
+
+    async function loadInr() {
+      const g = await getJSON("https://api.coingecko.com/api/v3/simple/price?ids=tether&vs_currencies=inr");
+      $("inrVal").textContent = "₹" + g.tether.inr.toFixed(2);
+      $("inrSub").textContent = "per 1 USDT";
+    }
+
+    async function loadFunding() {
+      delete sent.fund;
+      const d = await getJSON("https://fapi.binance.com/fapi/v1/premiumIndex?symbol=BTCUSDT");
+      const f = parseFloat(d.lastFundingRate) * 100;
+      sent.fund = f;
+      $("fundVal").textContent = (f >= 0 ? "+" : "") + f.toFixed(4) + "%";
+      $("fundSub").textContent = f >= 0.05 ? "Crowded longs" : f < 0 ? "Shorts paying" : "Normal";
+    }
+
+    // Cycle Heat: BTC daily + weekly candles from Binance (also feeds the sentiment meter)
+    const sma = (c, n) => c.slice(-n).reduce((a, b) => a + b, 0) / n;
+
+    function rsi14(c) {
+      let g = 0, l = 0;
+      for (let i = 1; i <= 14; i++) { const d = c[i] - c[i - 1]; d >= 0 ? (g += d) : (l -= d); }
+      g /= 14; l /= 14;
+      for (let i = 15; i < c.length; i++) {
+        const d = c[i] - c[i - 1];
+        g = (g * 13 + Math.max(d, 0)) / 14;
+        l = (l * 13 + Math.max(-d, 0)) / 14;
+      }
+      return l === 0 ? 100 : 100 - 100 / (1 + g / l);
+    }
+
+    async function loadCycle() {
+      ["mayerPct", "rsi", "pi"].forEach((k) => delete sent[k]);
+      const [dk, wk] = await Promise.all([
+        bn("/api/v3/klines?symbol=BTCUSDT&interval=1d&limit=1000"),
+        bn("/api/v3/klines?symbol=BTCUSDT&interval=1w&limit=1000")
+      ]);
+      const d = dk.map((k) => +k[4]);
+      const w = wk.map((k) => +k[4]);
+      if (d.length < 350 || w.length < 20) throw new Error("Not enough BTC history");
+      const price = d[d.length - 1];
+
+      // Pi Cycle: how far the 111DMA is below 2 x 350DMA
+      const gap = ((2 * sma(d, 350) - sma(d, 111)) / (2 * sma(d, 350))) * 100;
+      $("piVal").textContent = gap > 0 ? gap.toFixed(0) + "% away" : "CROSSED";
+      $("piSub").textContent = "111DMA vs 2×350DMA";
+
+      // Mayer multiple (price / 200DMA) and its percentile over the available daily history (~2.2 years)
+      const ms = [];
+      let sum = 0;
+      for (let i = 0; i < d.length; i++) {
+        sum += d[i];
+        if (i >= 200) sum -= d[i - 200];
+        if (i >= 199) ms.push(d[i] / (sum / 200));
+      }
+      const m = ms[ms.length - 1];
+      $("mayVal").textContent = m.toFixed(2);
+      $("maySub").textContent = m < 0.8 ? "Cheap" : m < 1.5 ? "Normal" : m < 2.4 ? "Stretched" : "Overheated";
+
+      const r = rsi14(w);
+      $("rsiVal").textContent = Math.round(r);
+      $("rsiSub").textContent = r >= 70 ? "Hot" : r <= 35 ? "Cold" : "Neutral";
+
+      const ath = Math.max(...wk.map((k) => +k[2]));
+      $("athVal").textContent = ((price / ath - 1) * 100).toFixed(1) + "%";
+      $("athSub").textContent = "ATH " + fmtUSD(ath);
+
+      sent.pi = gap;
+      sent.mayerPct = (ms.filter((x) => x <= m).length / ms.length) * 100;
+      sent.rsi = r;
+    }
+
+    // General market sentiment meter (whole market, not per coin): 0 = very bearish, 100 = very bullish.
+    // Inputs (weights): Fear&Greed 25, BTC price vs 200DMA percentile 25, BTC weekly RSI 15,
+    // Pi Cycle proximity 15, Altcoin Season index 10, BTC funding 10. Missing inputs are skipped.
+    function updateSentiment() {
+      const cl = (x) => Math.max(0, Math.min(100, x));
+      const parts = [];
+      if (sent.fng != null) parts.push([sent.fng, 25]);
+      if (sent.mayerPct != null) parts.push([sent.mayerPct, 25]);
+      if (sent.rsi != null) parts.push([cl(((sent.rsi - 30) / 50) * 100), 15]);
+      if (sent.pi != null) parts.push([100 - cl((sent.pi / 40) * 100), 15]);
+      if (sent.alt != null) parts.push([sent.alt, 10]);
+      if (sent.fund != null) parts.push([cl((sent.fund / 0.05) * 100), 10]);
+      if (parts.length < 3) return;
+      const w = parts.reduce((a, p) => a + p[1], 0);
+      const score = Math.round(parts.reduce((a, p) => a + p[0] * p[1], 0) / w);
+      const label = score < 20 ? "Very Bearish" : score < 40 ? "Bearish" : score < 60 ? "Neutral" : score < 80 ? "Bullish" : "Very Bullish";
+      $("sentText").textContent = `${label} · ${score}`;
+      $("sentDot").style.left = score + "%";
+    }
+
+    // Page switcher: swipe left/right on the tiles, or tap a dot
+    let page = 0;
+    const pulseEl = document.querySelector(".pulse");
+    const pages = document.querySelectorAll(".pulse-grid");
+    pages.forEach((g, j) => {
+      const d = document.createElement("i");
+      d.setAttribute("role", "button");
+      d.setAttribute("aria-label", g.dataset.title);
+      d.tabIndex = 0;
+      d.addEventListener("click", () => showPage(j));
+      d.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") showPage(j); });
+      $("pulseDots").appendChild(d);
+    });
+
+    function showPage(i) {
+      const n = pages.length, next = ((i % n) + n) % n;
+      pulseEl.style.setProperty("--dx", (next >= page ? 14 : -14) + "px");
+      page = next;
+      pages.forEach((g, j) => g.classList.toggle("on", j === page));
+      $("pulseDots").querySelectorAll("i").forEach((d, j) => d.classList.toggle("on", j === page));
+      $("pulseTitle").textContent = pages[page].dataset.title;
+    }
+
+    let touchX = 0, touchY = 0;
+    pulseEl.addEventListener("touchstart", (e) => {
+      touchX = e.touches[0].clientX;
+      touchY = e.touches[0].clientY;
+    }, { passive: true });
+    pulseEl.addEventListener("touchend", (e) => {
+      const dx = e.changedTouches[0].clientX - touchX, dy = e.changedTouches[0].clientY - touchY;
+      if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.5) showPage(page + (dx < 0 ? 1 : -1));
+    }, { passive: true });
+    showPage(0);
+
+    async function withRetry(fn) {
+      try { return await fn(); } catch (e) {
+        await new Promise((r) => setTimeout(r, 1500));
+        return fn();
+      }
+    }
+
+    async function loadPulse() {
+      if (pulseBusy) return; // ignore taps/timers while a refresh is running
+      pulseBusy = true;
+      lastPulse = Date.now();
+      $("pulseUpdated").textContent = "updating…";
+      try {
+        const tasks = {
+          "F&G": loadFng,
+          "Dom": () => withRetry(loadGlobal),
+          "Alt": loadAlt,
+          "Px": loadTickers,
+          "INR": () => withRetry(loadInr),
+          "Cycle": loadCycle,
+          "Fund": loadFunding
+        };
+        const names = Object.keys(tasks);
+        const results = await Promise.allSettled(names.map((n) => tasks[n]()));
+        const failed = names.filter((n, i) => results[i].status === "rejected");
+        results.forEach((r) => r.status === "rejected" && console.warn("Market Pulse:", r.reason));
+        updateSentiment();
+        const t = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        $("pulseUpdated").textContent = failed.length ? failed.join(", ") + " failed · " + t : t;
+      } finally {
+        pulseBusy = false;
+      }
+    }
+
+    $("pulseRefresh").addEventListener("click", loadPulse);
+    loadPulse();
+    setInterval(() => { if (!document.hidden) loadPulse(); }, PULSE_EVERY);
   </script>
 </body>
 
