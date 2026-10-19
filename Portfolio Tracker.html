@@ -531,6 +531,7 @@ const DCA_NEAR_LOW_CEIL_PCT = 8;
 const TA_ALIGN_BUFFER_MS = 15 * 60000;
 const TA_HISTORY_DAYS = 365;
 const TA_FETCH_DELAY_MS = 1500;
+const TA_MAX_DATA_AGE_MS = 3 * 24 * 3600000; // daily history must end within 3 days of now
 
 const RSI_PERIOD = 14;
 const RSI_OVERSOLD = 30; // fallback only, used when a coin lacks enough RSI history for its own threshold
@@ -572,7 +573,7 @@ const DISCOVER_MAX_TA_FETCHES = 25;
 const EMA_TREND_LONG = 200;
 
 const TA_LOGIC_VERSION = 17; // bumped: RSI overbought band tightened to 80-92 (97th pct) for extreme-only SWING TRIM
-const TA_FETCH_VERSION = 4; // bumped: now also fetches true OHLC extremes for the 90d high/low
+const TA_FETCH_VERSION = 7; // bumped: 90d extremes now from hourly data (exact window) + in-window OHLC wicks; 365d extremes from OHLC wicks
 
 let saved             = JSON.parse(localStorage.getItem('shortfall_portfolio') || '[]');
 let pricesCache       = JSON.parse(localStorage.getItem('shortfall_prices') || '{}');
@@ -834,46 +835,88 @@ async function fetchTaHistory(id) {
     const lastTs = points[points.length - 1][0];
     const lastIsToday = new Date(lastTs).toISOString().slice(0, 10) === new Date().toISOString().slice(0, 10);
     const usablePoints = lastIsToday ? points.slice(0, -1) : points;
-    return usablePoints.map(p => p[1]);
+    const out = usablePoints.map(p => p[1]);
+    out.lastTs = usablePoints.length ? usablePoints[usablePoints.length - 1][0] : null; // freshness check
+    return out;
   } catch (err) {
     return null;
   }
 }
 
-// The daily "closes" above are one snapshot price per day (roughly midnight UTC) — they never see
-// the intraday wick a coin actually touched, so a rolling min/max of closes always understates the
-// real 90-day range you'd see on an exchange chart (Binance, TradingView etc). CoinGecko's OHLC
-// endpoint returns actual candle highs/lows instead — coarser (4-day candles this far back, per
-// CoinGecko's own bucketing) but still far closer to the real chart than a closes-only range.
-async function fetchOhlcExtremes(id, days) {
+
+// ---- True high/low sources -------------------------------------------------------------------
+// Daily closes are one snapshot per day and never see intraday wicks, so extremes built from them
+// understate the real range. Two CoinGecko sources fix that:
+//  * OHLC (365d): 4-day candles with real wick highs/lows. Price is exact; the DATE is only good
+//    to the 4-day bucket, and the oldest candle can straddle the window edge.
+//  * market_chart for 90d (no interval => CoinGecko auto-granularity returns HOURLY points for
+//    windows of 2-90 days): exact window edge and hour-level dates, price within the sub-hour wick.
+async function fetchJsonTimeout(url) {
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
-    const res = await fetch(`${API_BASE}/coins/${id}/ohlc?vs_currency=inr&days=${days}&x_cg_demo_api_key=${API_KEY}`, { signal: controller.signal });
+    const res = await fetch(url, { signal: controller.signal });
     clearTimeout(timeoutId);
     if (!res.ok) throw new Error(`HTTP_ERROR:${res.status}`);
-    const data = await res.json();
-    if (!Array.isArray(data) || !data.length) return null;
-    let highVal = -Infinity, highTs = null, lowVal = Infinity, lowTs = null;
-    // Candles are 4 days wide and the endpoint returns whole buckets, so the oldest candle(s) can
-    // straddle the window edge — their wick may have printed days BEFORE the window started (this
-    // is how a "90d" low ended up ~92d old). Only accept candles that sit fully inside the window
-    // (cutoff pushed in by one bucket, valid whether ts is the candle's start or end time); the few
-    // days left uncovered at the edge are still covered by the daily closes the caller merges in.
-    const OHLC_BUCKET_MS = 4 * 86400000;
-    const cutoffTs = Date.now() - days * 86400000 + OHLC_BUCKET_MS;
-    for (const candle of data) {
-      if (!Array.isArray(candle) || candle.length < 5) continue;
-      const [ts, , high, low] = candle;
-      if (ts == null || ts < cutoffTs) continue;
-      if (high != null && !isNaN(high) && high > highVal) { highVal = high; highTs = ts; }
-      if (low != null && !isNaN(low) && low < lowVal) { lowVal = low; lowTs = ts; }
-    }
-    if (!isFinite(highVal) || !isFinite(lowVal) || highTs == null || lowTs == null) return null;
-    return { high: highVal, highTs, low: lowVal, lowTs };
+    return await res.json();
   } catch (err) {
     return null;
   }
+}
+
+async function fetchRangeExtremes(id) {
+  const DAY = 86400000, BUCKET = 4 * DAY, now = Date.now();
+  const cutoff90 = now - DCA_DIP_WINDOW_DAYS * DAY, cutoffYear = now - YEAR_HIGH_DAYS * DAY;
+  const ohlc = await fetchJsonTimeout(`${API_BASE}/coins/${id}/ohlc?vs_currency=inr&days=${YEAR_HIGH_DAYS}&x_cg_demo_api_key=${API_KEY}`);
+  await new Promise(r => setTimeout(r, 500));
+  const hourly = await fetchJsonTimeout(`${API_BASE}/coins/${id}/market_chart?vs_currency=inr&days=${DCA_DIP_WINDOW_DAYS}&x_cg_demo_api_key=${API_KEY}`);
+  const ok = v => v != null && !isNaN(v);
+  const slots = { d90High: null, d90Low: null, yHigh: null, yLow: null };
+  const take = (key, val, ts, src, isHigh) => {
+    if (!ok(val) || ts == null) return;
+    const cur = slots[key];
+    if (!cur || (isHigh ? val > cur.val : val < cur.val)) slots[key] = { val, ts, src };
+  };
+  let any = false;
+  if (Array.isArray(ohlc)) {
+    for (const c of ohlc) {
+      if (!Array.isArray(c) || c.length < 5) continue;
+      const [ts, , high, low] = c;
+      if (ts == null || ts < cutoffYear) continue;
+      any = true;
+      take('yHigh', high, ts, 'ohlc', true); take('yLow', low, ts, 'ohlc', false);
+      // only candles fully inside the 90d window (valid whether ts is candle start or end)
+      if (ts >= cutoff90 + BUCKET) { take('d90High', high, ts, 'ohlc', true); take('d90Low', low, ts, 'ohlc', false); }
+    }
+  }
+  const pts = hourly && Array.isArray(hourly.prices) ? hourly.prices : null;
+  if (pts) {
+    for (const pt of pts) {
+      if (!Array.isArray(pt) || pt[0] < cutoff90) continue;
+      any = true;
+      take('d90High', pt[1], pt[0], 'hourly', true); take('d90Low', pt[1], pt[0], 'hourly', false);
+      take('yHigh', pt[1], pt[0], 'hourly', true); take('yLow', pt[1], pt[0], 'hourly', false);
+    }
+  }
+  // Date refinement: a wick from a 4-day candle only pins the extreme to "somewhere in that bucket".
+  // Where hourly points cover that span, snap the date to the hour whose price sits closest to the
+  // wick (accepted only if within REFINE_TOL of it, so a coincidental match on a different day
+  // can't win). The wick PRICE is kept; only the date improves, and the entry then counts as exact.
+  const REFINE_TOL = 0.015;
+  if (pts) {
+    for (const key of Object.keys(slots)) {
+      const sl = slots[key];
+      if (!sl || sl.src !== 'ohlc') continue;
+      let best = null, bestDiff = Infinity;
+      for (const pt of pts) {
+        if (!Array.isArray(pt) || Math.abs(pt[0] - sl.ts) > BUCKET) continue;
+        const diff = Math.abs(pt[1] - sl.val);
+        if (diff < bestDiff) { bestDiff = diff; best = pt; }
+      }
+      if (best && bestDiff / sl.val <= REFINE_TOL) { sl.ts = best[0]; sl.src = 'hourly'; }
+    }
+  }
+  return any ? slots : null;
 }
 
 function auditTa(ta) {
@@ -905,12 +948,15 @@ async function fetchTaForPortfolio(ids, { force = false } = {}) {
         // A logic-only recompute derives rolling extremes from `closes` again, which would quietly
         // downgrade an already-fetched OHLC-sourced (true wick) high/low back to the closes-only
         // approximation. Carry the OHLC overlay forward when this coin already has one.
-        if (cached.rollingExtremesSource === 'ohlc') {
+        if (cached.year) recomputedTa.year = cached.year;
+        recomputedTa.closesEndTs = cached.closesEndTs;
+        if (cached.rollingExtremesSource === 'ohlc' || cached.rollingExtremesSource === 'hourly') {
+          recomputedTa.rollingHighSrc = cached.rollingHighSrc; recomputedTa.rollingLowSrc = cached.rollingLowSrc;
           recomputedTa.rollingHigh = cached.rollingHigh;
           recomputedTa.rollingLow = cached.rollingLow;
           recomputedTa.rollingHighDaysAgo = cached.rollingHighDaysAgo;
           recomputedTa.rollingLowDaysAgo = cached.rollingLowDaysAgo;
-          recomputedTa.rollingExtremesSource = 'ohlc';
+          recomputedTa.rollingExtremesSource = cached.rollingExtremesSource;
         }
         recomputedTa.fetchVersion = TA_FETCH_VERSION;
         taCache[id] = recomputedTa;
@@ -931,31 +977,42 @@ async function fetchTaForPortfolio(ids, { force = false } = {}) {
     const cached = taCache[id];
     if (force || !cached) return true;
     if (cached.fetchVersion !== TA_FETCH_VERSION) return true;
+    if (cached.closesEndTs && Date.now() - cached.closesEndTs > TA_MAX_DATA_AGE_MS && Date.now() - cached.timestamp > 6 * 3600000) return true;
     if (cached.version !== TA_LOGIC_VERSION && !hasEnoughHistory(cached)) return true;
     return taBoundaryPassedSince(cached.timestamp);
   });
   if (!stale.length || taFetchInFlight) return;
   taFetchInFlight = true;
-  let updated = 0, auditFailures = 0;
+  let updated = 0, auditFailures = 0, staleFeeds = 0;
   for (const id of stale) {
     const closes = await fetchTaHistory(id);
+    // Freshness guard: a daily series that ends days ago makes every window, RSI and EMA read from
+    // the wrong dates. Reject it and keep whatever was cached instead of silently using it.
+    if (closes && (closes.lastTs == null || Date.now() - closes.lastTs > TA_MAX_DATA_AGE_MS)) {
+      staleFeeds++;
+      setActivityStatus(`Daily history for ${id} ends ${closes.lastTs ? new Date(closes.lastTs).toISOString().slice(0, 10) : 'at an unknown date'} — too old, discarded.`, 'warn');
+      await new Promise(r => setTimeout(r, TA_FETCH_DELAY_MS));
+      continue;
+    }
     if (closes) {
       const ta = computeTaFromCloses(closes);
       if (ta && auditTa(ta)) {
+        ta.closesEndTs = closes.lastTs;
         await new Promise(r => setTimeout(r, 500));
-        const ohlcExtremes = await fetchOhlcExtremes(id, DCA_DIP_WINDOW_DAYS);
-        if (ohlcExtremes) {
-          // ta.rollingHigh/Low currently hold the strict in-window close-based values; a wick only
-          // replaces them if it's a more extreme (and in-window) reading.
-          if (ohlcExtremes.high > ta.rollingHigh) {
-            ta.rollingHigh = ohlcExtremes.high;
-            ta.rollingHighDaysAgo = Math.min(daysSince(ohlcExtremes.highTs), DCA_DIP_WINDOW_DAYS);
-          }
-          if (ohlcExtremes.low < ta.rollingLow) {
-            ta.rollingLow = ohlcExtremes.low;
-            ta.rollingLowDaysAgo = Math.min(daysSince(ohlcExtremes.lowTs), DCA_DIP_WINDOW_DAYS);
-          }
-          ta.rollingExtremesSource = 'ohlc';
+        const ext = await fetchRangeExtremes(id);
+        // Start from the close-based values, then let any more-extreme, in-window wick replace them.
+        ta.rollingHighSrc = 'closes'; ta.rollingLowSrc = 'closes';
+        const w = closes.slice(-YEAR_HIGH_DAYS);
+        const yHi = Math.max(...w), yLo = Math.min(...w);
+        ta.year = { high: yHi, highDaysAgo: w.length - w.indexOf(yHi), highSrc: 'closes', low: yLo, lowDaysAgo: w.length - w.indexOf(yLo), lowSrc: 'closes' };
+        if (ext) {
+          const dAgo = (ts, cap) => Math.min(daysSince(ts), cap);
+          if (ext.d90High && ext.d90High.val > ta.rollingHigh) { ta.rollingHigh = ext.d90High.val; ta.rollingHighDaysAgo = dAgo(ext.d90High.ts, DCA_DIP_WINDOW_DAYS); ta.rollingHighSrc = ext.d90High.src; }
+          if (ext.d90Low && ext.d90Low.val < ta.rollingLow) { ta.rollingLow = ext.d90Low.val; ta.rollingLowDaysAgo = dAgo(ext.d90Low.ts, DCA_DIP_WINDOW_DAYS); ta.rollingLowSrc = ext.d90Low.src; }
+          if (ext.yHigh && ext.yHigh.val > ta.year.high) { ta.year.high = ext.yHigh.val; ta.year.highDaysAgo = dAgo(ext.yHigh.ts, YEAR_HIGH_DAYS); ta.year.highSrc = ext.yHigh.src; }
+          if (ext.yLow && ext.yLow.val < ta.year.low) { ta.year.low = ext.yLow.val; ta.year.lowDaysAgo = dAgo(ext.yLow.ts, YEAR_HIGH_DAYS); ta.year.lowSrc = ext.yLow.src; }
+          const srcs = [ta.rollingHighSrc, ta.rollingLowSrc];
+          ta.rollingExtremesSource = srcs.includes('ohlc') ? 'ohlc' : srcs.includes('hourly') ? 'hourly' : 'closes';
         } else {
           ta.rollingExtremesSource = 'closes';
         }
@@ -977,7 +1034,7 @@ async function fetchTaForPortfolio(ids, { force = false } = {}) {
     updatePricesInTable();
     updateScheduledStatus();
   }
-  setActivityStatus(`TA history updated (${updated}/${stale.length}).${auditFailures ? ` ${auditFailures} discarded on audit failure.` : ''}`, updated > 0 ? 'ok' : 'warn');
+  setActivityStatus(`TA history updated (${updated}/${stale.length}).${auditFailures ? ` ${auditFailures} discarded on audit failure.` : ''}${staleFeeds ? ` ${staleFeeds} discarded as stale (history ended >3d ago).` : ''}`, updated > 0 ? 'ok' : 'warn');
   taFetchInFlight = false;
 }
 
@@ -1016,10 +1073,29 @@ function rsiAtExtreme(rsiSeries, daysAgo, isLive) {
 
 // Trailing-365d high (daily closes, plus live price so a fresh high reads as 0%) and the current
 // drawdown from it. Returns null if there isn't enough history to call it a year.
-function yearHighDrawdown(closes, cur) {
+// athValue/atlValue (+ dates) are folded in when they fall inside the 365d window — daily closes
+// miss intraday wicks, so without this a recent all-time low would read higher than the ATL itself.
+function yearHighDrawdown(closes, cur, high24h, low24h, athValue, athDate, atlValue, atlDate, stored) {
   if (!closes || closes.length < YEAR_HIGH_DAYS - 20 || cur == null) return null;
-  const high = Math.max(...closes.slice(-YEAR_HIGH_DAYS), cur);
-  return { high, pct: (cur - high) / high * 100 };
+  const w = closes.slice(-YEAR_HIGH_DAYS);
+  let high = Math.max(...w), low = Math.min(...w);
+  let highDaysAgo = w.length - w.indexOf(high), lowDaysAgo = w.length - w.indexOf(low);
+  let highSrc = 'closes', lowSrc = 'closes'; // 'ohlc' = date only good to a 4-day candle
+  if (stored && stored.high > high) { high = stored.high; highDaysAgo = stored.highDaysAgo; highSrc = stored.highSrc ?? 'ohlc'; }
+  if (stored && stored.low < low) { low = stored.low; lowDaysAgo = stored.lowDaysAgo; lowSrc = stored.lowSrc ?? 'ohlc'; }
+  const liveHigh = Math.max(cur, high24h ?? -Infinity), liveLow = Math.min(cur, low24h ?? Infinity);
+  // <= 0.5% tolerance: when a candle wick IS the all-time extreme (same price), prefer the ATL/ATH's
+  // exact date over the candle's 4-day-bucket date so the two cards agree.
+  if (atlValue != null && atlDate && daysSince(atlDate) <= YEAR_HIGH_DAYS && atlValue <= low * 1.005) { low = Math.min(low, atlValue); lowDaysAgo = daysSince(atlDate); lowSrc = 'exact'; }
+  if (athValue != null && athDate && daysSince(athDate) <= YEAR_HIGH_DAYS && athValue >= high * 0.995) { high = Math.max(high, athValue); highDaysAgo = daysSince(athDate); highSrc = 'exact'; }
+  if (liveHigh > high) { high = liveHigh; highDaysAgo = 0; highSrc = 'exact'; }
+  if (liveLow < low) { low = liveLow; lowDaysAgo = 0; lowSrc = 'exact'; }
+  return {
+    high, low, highDaysAgo, lowDaysAgo, highApprox: highSrc === 'ohlc', lowApprox: lowSrc === 'ohlc',
+    pct: (cur - high) / high * 100,          // drawdown from the 365d high (<= 0)
+    abovePct: (cur - low) / low * 100,       // distance above the 365d low (>= 0)
+    rangePos: high > low ? (cur - low) / (high - low) * 100 : null // 0 = at low, 100 = at high
+  };
 }
 
 function classifyHolding(md, item, ta, macroTa) {
@@ -1091,7 +1167,7 @@ function classifyHolding(md, item, ta, macroTa) {
   const depth = athPct != null ? Math.abs(athPct) : null;
   const athTiers = ta?.athTiers ?? { extreme: DCA_EXTREME_PCT, deep: DCA_DEEP_PCT, moderate: DCA_MODERATE_PCT, watch: DCA_WATCH_PCT };
   const yearTiers = ta?.yearTiers ?? { extreme: DCA_YEAR_EXTREME_PCT, deep: DCA_YEAR_DEEP_PCT, moderate: DCA_YEAR_MODERATE_PCT };
-  const yr = yearHighDrawdown(ta?.closes, cur);
+  const yr = yearHighDrawdown(ta?.closes, cur, high24h, low24h, athValue, athDate, atlValue, atlDate, ta?.year);
   const yrNote = yr ? `, ${Math.abs(yr.pct).toFixed(0)}% below ${YEAR_HIGH_DAYS}d high` : '';
 
   if (deadLiquidity) {
@@ -1168,7 +1244,7 @@ function classifyHolding(md, item, ta, macroTa) {
   // doesn't imply false precision.
   const lowDaysAgoApprox = !isLiveLow
     && !(atlWithinWindow && atlValue != null && effectiveLow === atlValue)
-    && ta?.rollingExtremesSource === 'ohlc';
+    && (ta?.rollingLowSrc ?? ta?.rollingExtremesSource) === 'ohlc';
 
   // Same construction as effectiveLow above, mirrored for the high: fold in the all-time-high
   // when it falls within the rolling window, and let live price or today's 24h-high reading set a
@@ -1187,7 +1263,7 @@ function classifyHolding(md, item, ta, macroTa) {
       : (ta?.rollingHighDaysAgo ?? null);
   const highDaysAgoApprox = !isLiveHigh
     && !(athWithinWindow && athValue != null && effectiveHigh === athValue)
-    && ta?.rollingExtremesSource === 'ohlc';
+    && (ta?.rollingHighSrc ?? ta?.rollingExtremesSource) === 'ohlc';
   // For extremes taken from 4-day OHLC candles, narrow the date using the known wick price.
   const lowDayK = lowDaysAgoApprox ? refineExtremeDay(ta?.closes, effectiveLowDaysAgo, effectiveLow) : effectiveLowDaysAgo;
   const highDayK = highDaysAgoApprox ? refineExtremeDay(ta?.closes, effectiveHighDaysAgo, effectiveHigh) : effectiveHighDaysAgo;
@@ -1285,9 +1361,17 @@ function classifyHolding(md, item, ta, macroTa) {
     rsiOverboughtThreshold: ta?.rsiOverboughtThreshold ?? RSI_OVERBOUGHT,
     nearLowThresholdPct: ta?.nearLowThresholdPct ?? DCA_DIP_NEAR_PCT,
     athTiers,
+    closesEndTs: ta?.closesEndTs ?? null,
     yearTiers,
     high365: yr ? yr.high : null,
     drawdown365: yr ? yr.pct : null,
+    high365DaysAgo: yr ? yr.highDaysAgo : null,
+    high365Approx: yr ? yr.highApprox : false,
+    low365Approx: yr ? yr.lowApprox : false,
+    low365: yr ? yr.low : null,
+    above365Low: yr ? yr.abovePct : null,
+    low365DaysAgo: yr ? yr.lowDaysAgo : null,
+    range365Pos: yr ? yr.rangePos : null,
     emaLong: liveEmaLong,
     rollingLow: ta?.rollingLow ?? null,
     effectiveLow,
@@ -1938,20 +2022,21 @@ function expandRowCore(tr, item, forceReExpand) {
           <div class="sub-value ${ta.athPct != null && ta.athPct <= (ta.athTiers?.moderate ?? DCA_MODERATE_PCT) ? 'buy' : ta.athPct != null && ta.athPct > (ta.athTiers?.watch ?? DCA_WATCH_PCT) ? 'sell' : ''}">${ta.athPct == null ? '—' : ta.athPct.toFixed(1) + '%'}, ${ta.isLiveAth ? 'today' : (ath == null ? '—' : ath + 'd ago')}</div>
         </div>
         <div class="detail-item">
-          <div class="label">${YEAR_HIGH_DAYS}-Day High</div>
-          <div class="value ${ta.drawdown365 != null && ta.drawdown365 <= (ta.yearTiers?.moderate ?? DCA_YEAR_MODERATE_PCT) ? 'buy' : ''}">${ta.high365 == null ? '—' : formatINR(ta.high365, precision)}</div>
-          <div class="sub-value ${ta.drawdown365 != null && ta.drawdown365 <= (ta.yearTiers?.moderate ?? DCA_YEAR_MODERATE_PCT) ? 'buy' : ''}">${ta.drawdown365 == null ? '—' : ta.drawdown365.toFixed(1) + '% (buy zone ≤' + (ta.yearTiers?.moderate ?? DCA_YEAR_MODERATE_PCT).toFixed(0) + '%)'}</div>
-        </div>
-        <div class="detail-item">
           <div class="label">All-Time Low${ta.isLiveAtl ? ' <span>⚡</span>' : ''}</div>
           <div class="value ${atlIsCheap ? 'buy' : ''}">${ta.atlValue == null ? '—' : formatINR(ta.atlValue, precision)}</div>
           <div class="sub-value ${atlIsCheap ? 'buy' : ''}">${pctAboveAtl == null ? '—' : (pctAboveAtl >= 0 ? '+' : '') + pctAboveAtl.toFixed(1) + '%'}, ${ta.isLiveAtl ? 'today' : (atl == null ? '—' : atl + 'd ago')}</div>
         </div>
-        <div class="detail-item signal-input">
-          <div class="label">${ta.rollingLowWindowDays || DCA_DIP_WINDOW_DAYS}-Day Low${ta.isLiveLow ? ' <span>⚡</span>' : ''}${ta.rollingExtremesSource === 'closes' ? ' <span title="Exchange wick data unavailable — approximated from daily closes">≈</span>' : ''}</div>
-          <div class="value ${lowIsNear ? 'buy' : ''}">${ta.effectiveLow == null ? '—' : formatINR(ta.effectiveLow, precision)}</div>
-          <div class="sub-value ${lowIsNear ? 'buy' : ''}">${(ta.effectiveLow == null || ta.cmp == null) ? '—' : (((ta.cmp - ta.effectiveLow) / ta.effectiveLow * 100) >= 0 ? '+' : '') + ((ta.cmp - ta.effectiveLow) / ta.effectiveLow * 100).toFixed(1) + '% ' + (((ta.cmp - ta.effectiveLow) / ta.effectiveLow * 100) >= 0 ? 'above' : 'below') + ', ' + (ta.isLiveLow ? 'today' : (ta.effectiveLowDaysAgo == null ? '—' : (ta.lowDaysAgoApprox ? '~' : '') + ta.effectiveLowDaysAgo + 'd ago'))}</div>
-          <div class="sub-value" title="RSI (14) on the day the low was set${ta.lowDaysAgoApprox ? ' — approximate, day estimated within a 4-day candle' : ''}">RSI at low: ${ta.lowRsi == null ? '—' : (ta.lowDaysAgoApprox ? '~' : '') + ta.lowRsi.toFixed(2)}</div>
+        <div class="detail-item">
+          <div class="label">${YEAR_HIGH_DAYS}-Day High</div>
+          <div class="value ${ta.drawdown365 != null && ta.drawdown365 <= (ta.yearTiers?.moderate ?? DCA_YEAR_MODERATE_PCT) ? 'buy' : ''}">${ta.high365 == null ? '—' : formatINR(ta.high365, precision)}</div>
+          <div class="sub-value ${ta.drawdown365 != null && ta.drawdown365 <= (ta.yearTiers?.moderate ?? DCA_YEAR_MODERATE_PCT) ? 'buy' : ''}">${ta.drawdown365 == null ? '—' : ta.drawdown365.toFixed(1) + '% below, ' + (ta.high365DaysAgo === 0 ? 'today' : (ta.high365Approx ? '~' : '') + ta.high365DaysAgo + 'd ago')}</div>
+          <div class="sub-value" title="Buy zone: price must be at least this far below the ${YEAR_HIGH_DAYS}d high (scaled to this coin's volatility)">Buy zone: ≤${(ta.yearTiers?.moderate ?? DCA_YEAR_MODERATE_PCT).toFixed(0)}%</div>
+        </div>
+        <div class="detail-item">
+          <div class="label">${YEAR_HIGH_DAYS}-Day Low</div>
+          <div class="value">${ta.low365 == null ? '—' : formatINR(ta.low365, precision)}</div>
+          <div class="sub-value">${ta.above365Low == null ? '—' : '+' + ta.above365Low.toFixed(1) + '% above, ' + (ta.low365DaysAgo === 0 ? 'today' : (ta.low365Approx ? '~' : '') + ta.low365DaysAgo + 'd ago')}</div>
+          <div class="sub-value" title="Where price sits inside its ${YEAR_HIGH_DAYS}d range: 0% = at the low, 100% = at the high">Range position: ${ta.range365Pos == null ? '—' : ta.range365Pos.toFixed(0) + '%'}</div>
         </div>
         <div class="detail-item signal-input">
           <div class="label">${ta.rollingLowWindowDays || DCA_DIP_WINDOW_DAYS}-Day High${ta.isLiveHigh ? ' <span>⚡</span>' : ''}${ta.rollingExtremesSource === 'closes' ? ' <span title="Exchange wick data unavailable — approximated from daily closes">≈</span>' : ''}</div>
@@ -1959,6 +2044,13 @@ function expandRowCore(tr, item, forceReExpand) {
           <div class="sub-value ${highIsNear ? 'swing' : ''}">${(ta.effectiveHigh == null || ta.cmp == null) ? '—' : (((ta.cmp - ta.effectiveHigh) / ta.effectiveHigh * 100) >= 0 ? '+' : '') + ((ta.cmp - ta.effectiveHigh) / ta.effectiveHigh * 100).toFixed(1) + '% ' + (((ta.cmp - ta.effectiveHigh) / ta.effectiveHigh * 100) >= 0 ? 'above' : 'below') + ', ' + (ta.isLiveHigh ? 'today' : (ta.effectiveHighDaysAgo == null ? '—' : (ta.highDaysAgoApprox ? '~' : '') + ta.effectiveHighDaysAgo + 'd ago'))}</div>
           <div class="sub-value" title="RSI (14) on the day the high was set${ta.highDaysAgoApprox ? ' — approximate, day estimated within a 4-day candle' : ''}">RSI at high: ${ta.highRsi == null ? '—' : (ta.highDaysAgoApprox ? '~' : '') + ta.highRsi.toFixed(2)}</div>
         </div>
+        <div class="detail-item signal-input">
+          <div class="label">${ta.rollingLowWindowDays || DCA_DIP_WINDOW_DAYS}-Day Low${ta.isLiveLow ? ' <span>⚡</span>' : ''}${ta.rollingExtremesSource === 'closes' ? ' <span title="Exchange wick data unavailable — approximated from daily closes">≈</span>' : ''}</div>
+          <div class="value ${lowIsNear ? 'buy' : ''}">${ta.effectiveLow == null ? '—' : formatINR(ta.effectiveLow, precision)}</div>
+          <div class="sub-value ${lowIsNear ? 'buy' : ''}">${(ta.effectiveLow == null || ta.cmp == null) ? '—' : (((ta.cmp - ta.effectiveLow) / ta.effectiveLow * 100) >= 0 ? '+' : '') + ((ta.cmp - ta.effectiveLow) / ta.effectiveLow * 100).toFixed(1) + '% ' + (((ta.cmp - ta.effectiveLow) / ta.effectiveLow * 100) >= 0 ? 'above' : 'below') + ', ' + (ta.isLiveLow ? 'today' : (ta.effectiveLowDaysAgo == null ? '—' : (ta.lowDaysAgoApprox ? '~' : '') + ta.effectiveLowDaysAgo + 'd ago'))}</div>
+          <div class="sub-value" title="RSI (14) on the day the low was set${ta.lowDaysAgoApprox ? ' — approximate, day estimated within a 4-day candle' : ''}">RSI at low: ${ta.lowRsi == null ? '—' : (ta.lowDaysAgoApprox ? '~' : '') + ta.lowRsi.toFixed(2)}</div>
+        </div>
+        <div class="detail-item detail-item-span2" title="Last daily close used for RSI, EMA and the 90d/365d windows"><div class="label">Daily data through</div><div class="value" style="font-size:11px">${ta.closesEndTs == null ? '—' : new Date(ta.closesEndTs).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} · extremes: ${ta.rollingExtremesSource ?? '—'}</div></div>
       </div>
 
       <div class="detail-group-title">Liquidity</div>
