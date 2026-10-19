@@ -500,6 +500,16 @@ const REL_STRENGTH_SCALE = 3;
 const REL_STRENGTH_MIN_BONUS = -10;
 const REL_STRENGTH_MAX_BONUS = 8;
 const DCA_WATCH_PCT = -20;
+// Entry-depth reference: drawdown from the trailing 365d high. ATH stays as the coarse quality/
+// discount filter, but for old coins it's years stale (e.g. -98% for everything from the last
+// cycle) and can't say whether there's a real, recent pullback to buy. Tiers are volatility-scaled
+// like the ATH ones; only 'moderate' gates WAIT vs HOLD, the others just grade the strength.
+const YEAR_HIGH_DAYS = 365;
+const DCA_YEAR_EXTREME_PCT = -60;
+const DCA_YEAR_DEEP_PCT = -45;
+const DCA_YEAR_MODERATE_PCT = -30;
+const YEAR_TIER_ABS_FLOOR_PCT = -80;
+const YEAR_TIER_ABS_CEIL_PCT = -10;
 
 const CRASH_7D_PCT = -15;
 
@@ -561,8 +571,8 @@ const DISCOVER_MAX_TA_FETCHES = 25;
 
 const EMA_TREND_LONG = 200;
 
-const TA_LOGIC_VERSION = 16; // bumped: RSI overbought band tightened to 80-92 (97th pct) for extreme-only SWING TRIM
-const TA_FETCH_VERSION = 3; // bumped: now also fetches true OHLC extremes for the 90d high/low
+const TA_LOGIC_VERSION = 17; // bumped: RSI overbought band tightened to 80-92 (97th pct) for extreme-only SWING TRIM
+const TA_FETCH_VERSION = 4; // bumped: now also fetches true OHLC extremes for the 90d high/low
 
 let saved             = JSON.parse(localStorage.getItem('shortfall_portfolio') || '[]');
 let pricesCache       = JSON.parse(localStorage.getItem('shortfall_prices') || '{}');
@@ -785,8 +795,15 @@ function computeTaFromCloses(closes) {
     moderate: clampTier(DCA_MODERATE_PCT),
     watch: clampTier(DCA_WATCH_PCT)
   };
+  const clampYearTier = base => Math.max(YEAR_TIER_ABS_FLOOR_PCT, Math.min(YEAR_TIER_ABS_CEIL_PCT, base * volScale));
+  const yearTiers = {
+    extreme: clampYearTier(DCA_YEAR_EXTREME_PCT),
+    deep: clampYearTier(DCA_YEAR_DEEP_PCT),
+    moderate: clampYearTier(DCA_YEAR_MODERATE_PCT)
+  };
   return {
     rsi: rsiSeries.length ? rsiSeries[rsiSeries.length - 1] : null,
+    yearTiers,
     rsiOversoldThreshold,
     rsiOverboughtThreshold,
     avgDailyMove,
@@ -838,9 +855,17 @@ async function fetchOhlcExtremes(id, days) {
     const data = await res.json();
     if (!Array.isArray(data) || !data.length) return null;
     let highVal = -Infinity, highTs = null, lowVal = Infinity, lowTs = null;
+    // Candles are 4 days wide and the endpoint returns whole buckets, so the oldest candle(s) can
+    // straddle the window edge — their wick may have printed days BEFORE the window started (this
+    // is how a "90d" low ended up ~92d old). Only accept candles that sit fully inside the window
+    // (cutoff pushed in by one bucket, valid whether ts is the candle's start or end time); the few
+    // days left uncovered at the edge are still covered by the daily closes the caller merges in.
+    const OHLC_BUCKET_MS = 4 * 86400000;
+    const cutoffTs = Date.now() - days * 86400000 + OHLC_BUCKET_MS;
     for (const candle of data) {
       if (!Array.isArray(candle) || candle.length < 5) continue;
       const [ts, , high, low] = candle;
+      if (ts == null || ts < cutoffTs) continue;
       if (high != null && !isNaN(high) && high > highVal) { highVal = high; highTs = ts; }
       if (low != null && !isNaN(low) && low < lowVal) { lowVal = low; lowTs = ts; }
     }
@@ -854,7 +879,8 @@ async function fetchOhlcExtremes(id, days) {
 function auditTa(ta) {
   if (!ta) return true;
   const fields = [ta.rsi, ta.emaLong, ta.rollingLow, ta.rollingHigh, ta.rsiOversoldThreshold, ta.rsiOverboughtThreshold, ta.nearLowThresholdPct,
-    ta.athTiers?.extreme, ta.athTiers?.deep, ta.athTiers?.moderate, ta.athTiers?.watch];
+    ta.athTiers?.extreme, ta.athTiers?.deep, ta.athTiers?.moderate, ta.athTiers?.watch,
+    ta.yearTiers?.extreme, ta.yearTiers?.deep, ta.yearTiers?.moderate];
   return fields.every(v => v == null || !isNaN(v));
 }
 
@@ -919,10 +945,16 @@ async function fetchTaForPortfolio(ids, { force = false } = {}) {
         await new Promise(r => setTimeout(r, 500));
         const ohlcExtremes = await fetchOhlcExtremes(id, DCA_DIP_WINDOW_DAYS);
         if (ohlcExtremes) {
-          ta.rollingHigh = ohlcExtremes.high;
-          ta.rollingLow = ohlcExtremes.low;
-          ta.rollingHighDaysAgo = daysSince(ohlcExtremes.highTs);
-          ta.rollingLowDaysAgo = daysSince(ohlcExtremes.lowTs);
+          // ta.rollingHigh/Low currently hold the strict in-window close-based values; a wick only
+          // replaces them if it's a more extreme (and in-window) reading.
+          if (ohlcExtremes.high > ta.rollingHigh) {
+            ta.rollingHigh = ohlcExtremes.high;
+            ta.rollingHighDaysAgo = Math.min(daysSince(ohlcExtremes.highTs), DCA_DIP_WINDOW_DAYS);
+          }
+          if (ohlcExtremes.low < ta.rollingLow) {
+            ta.rollingLow = ohlcExtremes.low;
+            ta.rollingLowDaysAgo = Math.min(daysSince(ohlcExtremes.lowTs), DCA_DIP_WINDOW_DAYS);
+          }
           ta.rollingExtremesSource = 'ohlc';
         } else {
           ta.rollingExtremesSource = 'closes';
@@ -960,7 +992,7 @@ async function fetchTaForPortfolio(ids, { force = false } = {}) {
 function refineExtremeDay(closes, daysAgo, knownPrice) {
   if (!closes || !closes.length || daysAgo == null || knownPrice == null) return daysAgo;
   let bestK = daysAgo, bestDiff = Infinity;
-  const lo = Math.max(1, daysAgo - 4), hi = Math.min(closes.length, daysAgo + 4);
+  const lo = Math.max(1, daysAgo - 4), hi = Math.min(closes.length, daysAgo + 4, DCA_DIP_WINDOW_DAYS);
   for (let k = lo; k <= hi; k++) {
     const c = closes[closes.length - k];
     if (c == null || isNaN(c)) continue;
@@ -980,6 +1012,14 @@ function rsiAtExtreme(rsiSeries, daysAgo, isLive) {
   if (idx < 0) return null;
   const v = rsiSeries[idx];
   return (v == null || isNaN(v)) ? null : v;
+}
+
+// Trailing-365d high (daily closes, plus live price so a fresh high reads as 0%) and the current
+// drawdown from it. Returns null if there isn't enough history to call it a year.
+function yearHighDrawdown(closes, cur) {
+  if (!closes || closes.length < YEAR_HIGH_DAYS - 20 || cur == null) return null;
+  const high = Math.max(...closes.slice(-YEAR_HIGH_DAYS), cur);
+  return { high, pct: (cur - high) / high * 100 };
 }
 
 function classifyHolding(md, item, ta, macroTa) {
@@ -1050,6 +1090,9 @@ function classifyHolding(md, item, ta, macroTa) {
   let signal, colorKey, strength, reason;
   const depth = athPct != null ? Math.abs(athPct) : null;
   const athTiers = ta?.athTiers ?? { extreme: DCA_EXTREME_PCT, deep: DCA_DEEP_PCT, moderate: DCA_MODERATE_PCT, watch: DCA_WATCH_PCT };
+  const yearTiers = ta?.yearTiers ?? { extreme: DCA_YEAR_EXTREME_PCT, deep: DCA_YEAR_DEEP_PCT, moderate: DCA_YEAR_MODERATE_PCT };
+  const yr = yearHighDrawdown(ta?.closes, cur);
+  const yrNote = yr ? `, ${Math.abs(yr.pct).toFixed(0)}% below ${YEAR_HIGH_DAYS}d high` : '';
 
   if (deadLiquidity) {
     signal = 'EXIT'; colorKey = 'sell';
@@ -1066,18 +1109,23 @@ function classifyHolding(md, item, ta, macroTa) {
     strength = 50;
     reason = `Micro-cap (${formatINR(mcap)}${rank ? `, #${rank}` : ', unranked'}) — real survival risk. Not an exit call, but not a place to add either.`;
   } else if (athPct != null) {
-    if (athPct <= athTiers.extreme) {
+    if (athPct <= athTiers.moderate && yr != null && yr.pct > yearTiers.moderate) {
+      // Discounted vs ATH, but no real pullback from the past year's high — nothing recent to buy.
+      signal = 'HOLD'; colorKey = 'hold';
+      strength = 35;
+      reason = `${depth.toFixed(0)}% below ATH, but only ${Math.abs(yr.pct).toFixed(0)}% below its ${YEAR_HIGH_DAYS}d high (needs ≥${Math.abs(yearTiers.moderate).toFixed(0)}% for this coin) — no meaningful recent pullback to buy.`;
+    } else if (athPct <= athTiers.extreme && (yr == null || yr.pct <= yearTiers.extreme)) {
       signal = 'WAIT'; colorKey = 'hold';
       strength = 20;
-      reason = `${depth.toFixed(0)}% below ATH — extreme, but depth alone isn't a floor. Watching for a better entry.`;
-    } else if (athPct <= athTiers.deep) {
+      reason = `${depth.toFixed(0)}% below ATH${yrNote} — extreme, but depth alone isn't a floor. Watching for a better entry.`;
+    } else if (athPct <= athTiers.deep && (yr == null || yr.pct <= yearTiers.deep)) {
       signal = 'WAIT'; colorKey = 'hold';
       strength = 30;
-      reason = `${depth.toFixed(0)}% below ATH — deep discount, but that alone doesn't confirm the fall has stopped.`;
+      reason = `${depth.toFixed(0)}% below ATH${yrNote} — deep discount, but that alone doesn't confirm the fall has stopped.`;
     } else if (athPct <= athTiers.moderate) {
       signal = 'WAIT'; colorKey = 'hold';
       strength = 25;
-      reason = `${depth.toFixed(0)}% below ATH — meaningful discount, but not yet a confirmed add.`;
+      reason = `${depth.toFixed(0)}% below ATH${yrNote} — meaningful discount, but not yet a confirmed add.`;
     } else if (athPct <= athTiers.watch) {
       signal = 'HOLD'; colorKey = 'hold';
       strength = 35;
@@ -1179,7 +1227,7 @@ function classifyHolding(md, item, ta, macroTa) {
           strength = Math.round(Math.min(60, strength + 30) + relStrengthBonus);
           const gapNote = lastLog == null ? '' : ` Also ${gapPct.toFixed(1)}% below last DCA (${formatINR(lastLog.price, pricePrecisionFor(lastLog.price))}) — a real step down.`;
           const streakNote = dcaStreakDay === 1 ? 'First flagged today.' : `Day ${dcaStreakDay} of this dip.`;
-          reason = `${depth.toFixed(0)}% below ATH, ${aboveLow.toFixed(1)}% above its ${ta.rollingLowWindowDays}d low (within this coin's own ≤${nearLowThresholdPct.toFixed(1)}% band), RSI ${liveRsi.toFixed(2)} (oversold vs this coin's own ≤${rsiThreshold.toFixed(0)} bottom zone) — conditions met. ${streakNote}${gapNote}${relStrengthNote}`;
+          reason = `${depth.toFixed(0)}% below ATH${yrNote}, ${aboveLow.toFixed(1)}% above its ${ta.rollingLowWindowDays}d low (within this coin's own ≤${nearLowThresholdPct.toFixed(1)}% band), RSI ${liveRsi.toFixed(2)} (oversold vs this coin's own ≤${rsiThreshold.toFixed(0)} bottom zone) — conditions met. ${streakNote}${gapNote}${relStrengthNote}`;
         } else {
           const nextDcaPrice = lastLog.price * (1 - dynGapPct / 100);
           const positionNote = gapPct >= 0
@@ -1189,9 +1237,9 @@ function classifyHolding(md, item, ta, macroTa) {
         }
       } else {
         if (nearLow && !rsiOversold) {
-          reason = `${depth.toFixed(0)}% below ATH, near its ${ta.rollingLowWindowDays}d low, but RSI (${liveRsi == null ? '—' : liveRsi.toFixed(2)}) hasn't reached this coin's own oversold zone (≤${rsiThreshold.toFixed(0)}) yet.`;
+          reason = `${depth.toFixed(0)}% below ATH${yrNote}, near its ${ta.rollingLowWindowDays}d low, but RSI (${liveRsi == null ? '—' : liveRsi.toFixed(2)}) hasn't reached this coin's own oversold zone (≤${rsiThreshold.toFixed(0)}) yet.`;
         } else {
-          reason = `${depth.toFixed(0)}% below ATH, but ${Math.abs(aboveLow).toFixed(1)}% ${aboveLow >= 0 ? 'above' : 'below'} its ${ta.rollingLowWindowDays}d low — outside this coin's own ≤${nearLowThresholdPct.toFixed(1)}% near-low band.`;
+          reason = `${depth.toFixed(0)}% below ATH${yrNote}, but ${Math.abs(aboveLow).toFixed(1)}% ${aboveLow >= 0 ? 'above' : 'below'} its ${ta.rollingLowWindowDays}d low — outside this coin's own ≤${nearLowThresholdPct.toFixed(1)}% near-low band.`;
         }
       }
     } else {
@@ -1237,6 +1285,9 @@ function classifyHolding(md, item, ta, macroTa) {
     rsiOverboughtThreshold: ta?.rsiOverboughtThreshold ?? RSI_OVERBOUGHT,
     nearLowThresholdPct: ta?.nearLowThresholdPct ?? DCA_DIP_NEAR_PCT,
     athTiers,
+    yearTiers,
+    high365: yr ? yr.high : null,
+    drawdown365: yr ? yr.pct : null,
     emaLong: liveEmaLong,
     rollingLow: ta?.rollingLow ?? null,
     effectiveLow,
@@ -1887,6 +1938,11 @@ function expandRowCore(tr, item, forceReExpand) {
           <div class="sub-value ${ta.athPct != null && ta.athPct <= (ta.athTiers?.moderate ?? DCA_MODERATE_PCT) ? 'buy' : ta.athPct != null && ta.athPct > (ta.athTiers?.watch ?? DCA_WATCH_PCT) ? 'sell' : ''}">${ta.athPct == null ? '—' : ta.athPct.toFixed(1) + '%'}, ${ta.isLiveAth ? 'today' : (ath == null ? '—' : ath + 'd ago')}</div>
         </div>
         <div class="detail-item">
+          <div class="label">${YEAR_HIGH_DAYS}-Day High</div>
+          <div class="value ${ta.drawdown365 != null && ta.drawdown365 <= (ta.yearTiers?.moderate ?? DCA_YEAR_MODERATE_PCT) ? 'buy' : ''}">${ta.high365 == null ? '—' : formatINR(ta.high365, precision)}</div>
+          <div class="sub-value ${ta.drawdown365 != null && ta.drawdown365 <= (ta.yearTiers?.moderate ?? DCA_YEAR_MODERATE_PCT) ? 'buy' : ''}">${ta.drawdown365 == null ? '—' : ta.drawdown365.toFixed(1) + '% (buy zone ≤' + (ta.yearTiers?.moderate ?? DCA_YEAR_MODERATE_PCT).toFixed(0) + '%)'}</div>
+        </div>
+        <div class="detail-item">
           <div class="label">All-Time Low${ta.isLiveAtl ? ' <span>⚡</span>' : ''}</div>
           <div class="value ${atlIsCheap ? 'buy' : ''}">${ta.atlValue == null ? '—' : formatINR(ta.atlValue, precision)}</div>
           <div class="sub-value ${atlIsCheap ? 'buy' : ''}">${pctAboveAtl == null ? '—' : (pctAboveAtl >= 0 ? '+' : '') + pctAboveAtl.toFixed(1) + '%'}, ${ta.isLiveAtl ? 'today' : (atl == null ? '—' : atl + 'd ago')}</div>
@@ -2060,10 +2116,12 @@ async function discoverCandidates() {
           const liveRsi = liveRsiSeries.length ? liveRsiSeries[liveRsiSeries.length - 1] : null;
           const rsiThreshold = ta.rsiOversoldThreshold ?? RSI_OVERSOLD;
           const rsiOversold = liveRsi != null && liveRsi <= rsiThreshold;
-          if (nearLow && rsiOversold) {
+          const yr = yearHighDrawdown(closes, cur);
+          const yearOk = yr == null || yr.pct <= (ta.yearTiers?.moderate ?? DCA_YEAR_MODERATE_PCT);
+          if (nearLow && rsiOversold && yearOk) {
             passing.push({
               id: md.id, symbol: (md.symbol || '').toUpperCase(), name: md.name,
-              price: cur, athPct: md.ath_change_percentage, aboveLow, rsi: liveRsi, rsiThreshold, nearLowThresholdPct,
+              price: cur, athPct: md.ath_change_percentage, yearPct: yr ? yr.pct : null, aboveLow, rsi: liveRsi, rsiThreshold, nearLowThresholdPct,
               windowDays: ta.rollingLowWindowDays, rank: md.market_cap_rank
             });
           }
@@ -2084,7 +2142,7 @@ async function discoverCandidates() {
           <span><span class="dc-symbol">${c.symbol}</span><span class="dc-name">${c.name}</span></span>
           <button class="dc-add">+ Add</button>
         </div>
-        <div class="dc-reason">${Math.abs(c.athPct).toFixed(0)}% below ATH, ${c.aboveLow.toFixed(1)}% above its ${c.windowDays}d low (within its own ≤${c.nearLowThresholdPct.toFixed(1)}% band), RSI ${c.rsi.toFixed(2)} (below its own ≤${c.rsiThreshold.toFixed(0)} bottom zone)${c.rank ? ` · rank #${c.rank}` : ''} — meets the same ACCUMULATE conditions as your holdings.</div>
+        <div class="dc-reason">${Math.abs(c.athPct).toFixed(0)}% below ATH${c.yearPct != null ? `, ${Math.abs(c.yearPct).toFixed(0)}% below ${YEAR_HIGH_DAYS}d high` : ''}, ${c.aboveLow.toFixed(1)}% above its ${c.windowDays}d low (within its own ≤${c.nearLowThresholdPct.toFixed(1)}% band), RSI ${c.rsi.toFixed(2)} (below its own ≤${c.rsiThreshold.toFixed(0)} bottom zone)${c.rank ? ` · rank #${c.rank}` : ''} — meets the same ACCUMULATE conditions as your holdings.</div>
       </div>
     `).join('');
 
