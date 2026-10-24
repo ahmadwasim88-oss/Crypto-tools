@@ -581,6 +581,7 @@ let marketDataCache   = JSON.parse(localStorage.getItem('shortfall_market_data')
 let holdingSignalCache = JSON.parse(localStorage.getItem('shortfall_holding_signals') || '{}');
 let dcaLogCache = JSON.parse(localStorage.getItem('shortfall_dca_log') || '{}');
 let taCache            = JSON.parse(localStorage.getItem('shortfall_ta_data') || '{}');
+let dayCandleCache     = JSON.parse(localStorage.getItem('shortfall_day_candle') || '{}');
 
 let coinList = [];
 let symbolIndex = {};
@@ -630,6 +631,7 @@ const savePrices           = () => localStorage.setItem('shortfall_prices', JSON
 const saveMarketData       = () => localStorage.setItem('shortfall_market_data', JSON.stringify(marketDataCache));
 const saveHoldingSignals   = () => localStorage.setItem('shortfall_holding_signals', JSON.stringify(holdingSignalCache));
 const saveDcaLog           = () => localStorage.setItem('shortfall_dca_log', JSON.stringify(dcaLogCache));
+const saveDayCandles       = () => localStorage.setItem('shortfall_day_candle', JSON.stringify(dayCandleCache));
 const saveTaData           = () => localStorage.setItem('shortfall_ta_data', JSON.stringify(taCache));
 
 function buildPortfolioMap() {
@@ -820,6 +822,86 @@ function computeTaFromCloses(closes) {
     version: TA_LOGIC_VERSION,
     timestamp: Date.now()
   };
+}
+
+// ---- Today's UTC candle (open / high / low) -----------------------------------------------------
+// Source: CoinGecko /ohlc?days=1 = 30-minute candles whose timestamp is the candle's CLOSE time
+// (per CoinGecko docs). Today's candle = every candle that closes after 00:00 UTC. To keep the
+// numbers exact we only accept the data if the first candle closes at exactly 00:30 UTC (so its
+// open IS the 00:00 UTC open) and there are no gaps between candles; otherwise we store nothing
+// and the UI shows '—' rather than an approximation. All values are CoinGecko's aggregated INR
+// prices, so they can differ slightly from a single exchange's candle.
+const CANDLE_MS = 30 * 60000;
+const DAY_CANDLE_REFRESH_MS = 15 * 60000;   // CoinGecko caches OHLC for 15 minutes
+const DAY_CANDLE_RETRY_MS = 5 * 60000;      // back-off after a failed/rejected fetch
+const dayCandleLastAttempt = {};
+let dayCandleInFlight = false;
+
+function utcDayKey(ts) { return new Date(ts).toISOString().slice(0, 10); }
+function utcMidnightOf(ts) { const d = new Date(ts); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()); }
+
+async function fetchDayCandle(id) {
+  const data = await fetchJsonTimeout(`${API_BASE}/coins/${id}/ohlc?vs_currency=inr&days=1&x_cg_demo_api_key=${API_KEY}`);
+  if (!Array.isArray(data)) return undefined;            // network/rate-limit failure: keep previous entry
+  const now = Date.now(), midnight = utcMidnightOf(now);
+  const cs = data
+    .filter(c => Array.isArray(c) && c.length >= 5 && c.slice(0, 5).every(v => v != null && !isNaN(v)) && c[0] > midnight && c[0] <= now + CANDLE_MS)
+    .sort((a, b) => a[0] - b[0]);
+  const bad = { dayKey: utcDayKey(now), invalid: true, fetchedAt: now };
+  if (!cs.length || cs[0][0] !== midnight + CANDLE_MS) return bad;   // first candle must be 00:00-00:30 UTC
+  // A missing candle could hide the day's real high/low, but the open is still exact: keep the open
+  // (and % change) and withhold the range.
+  let rangeOk = true;
+  for (let i = 1; i < cs.length; i++) {
+    const gap = cs[i][0] - cs[i - 1][0];
+    const isLast = i === cs.length - 1;
+    if (isLast ? (gap <= 0 || gap > CANDLE_MS) : gap !== CANDLE_MS) { rangeOk = false; break; }
+  }
+  return {
+    dayKey: utcDayKey(now),
+    open: cs[0][1],
+    high: rangeOk ? Math.max(...cs.map(c => c[2])) : null,
+    low: rangeOk ? Math.min(...cs.map(c => c[3])) : null,
+    lastTs: cs[cs.length - 1][0],
+    fetchedAt: now
+  };
+}
+
+async function refreshDayCandles(ids) {
+  if (dayCandleInFlight) return;
+  const today = utcDayKey(Date.now());
+  const due = ids.filter(id => {
+    const c = dayCandleCache[id];
+    const lastTry = dayCandleLastAttempt[id] || 0;
+    if (Date.now() - lastTry < DAY_CANDLE_RETRY_MS) return false;
+    if (!c || c.dayKey !== today) return true;
+    return Date.now() - c.fetchedAt >= (c.invalid ? DAY_CANDLE_RETRY_MS : DAY_CANDLE_REFRESH_MS);
+  });
+  if (!due.length) return;
+  dayCandleInFlight = true;
+  try {
+    for (const id of due) {
+      dayCandleLastAttempt[id] = Date.now();
+      const res = await fetchDayCandle(id);
+      if (res !== undefined) { dayCandleCache[id] = res; saveDayCandles(); updatePricesInTable(); }
+      await new Promise(r => setTimeout(r, TA_FETCH_DELAY_MS));
+    }
+  } finally {
+    dayCandleInFlight = false;
+  }
+}
+
+function getDayCandle(id) {
+  const c = dayCandleCache[id];
+  return (c && !c.invalid && c.dayKey === utcDayKey(Date.now()) && c.open > 0) ? c : null;
+}
+
+// Today's move: live price vs today's 00:00 UTC open (= previous day's close). null if unavailable.
+function getTodayChangePct(id) {
+  const c = getDayCandle(id);
+  const cur = pricesCache[id] ?? marketDataCache[id]?.current_price;
+  if (!c || cur == null) return null;
+  return (cur - c.open) / c.open * 100;
 }
 
 async function fetchTaHistory(id) {
@@ -1355,7 +1437,7 @@ function classifyHolding(md, item, ta, macroTa) {
   return {
     signal, colorKey, strength, reason,
     volume, mcap, rank, athPct, athValue, athDate, atlValue, atlDate, isLiveAth, isLiveAtl, low24h, high24h, volMcapRatio,
-    change24h: md.change_24h, change7d: md.change_7d, change30d: md.change_30d,
+    change7d: md.change_7d, change30d: md.change_30d,
     rsi: liveRsi,
     rsiOversoldThreshold: ta?.rsiOversoldThreshold ?? RSI_OVERSOLD,
     rsiOverboughtThreshold: ta?.rsiOverboughtThreshold ?? RSI_OVERBOUGHT,
@@ -1588,6 +1670,7 @@ async function schedulePriceFetch() {
     updatePricesInTable();
     const taIds = [...new Set([...ids, 'bitcoin'])];
     fetchTaForPortfolio(taIds);
+    refreshDayCandles(ids);
   } else {
     updatePricesInTable();
     if (refreshPriceTimer) { clearInterval(refreshPriceTimer); refreshPriceTimer = null; }
@@ -1735,7 +1818,7 @@ function toggleChart(id, symbol, btn) {
 
 function priceCellHTML(id, cur) {
   if (!cur) return '<span class="gain-na">—</span>';
-  const chg24h = marketDataCache[id]?.change_24h;
+  const chg24h = getTodayChangePct(id);
   const chgHtml = chg24h == null ? '' : `<span class="price-change-24h ${chg24h >= 0 ? 'gain-pos' : 'gain-neg'}">${formatPct(chg24h)}</span>`;
   return `${formatINR(cur, pricePrecisionFor(cur), true)}${chgHtml}`;
 }
@@ -1982,8 +2065,13 @@ function expandRowCore(tr, item, forceReExpand) {
   const atl = ta.isLiveAtl ? 0 : daysSince(ta.atlDate);
   const pctAboveAtl = (ta.cmp != null && ta.atlValue != null && ta.atlValue !== 0) ? ((ta.cmp - ta.atlValue) / ta.atlValue * 100) : null;
   const precision = pricePrecisionFor(ta.cmp);
-  const barLow = (ta.low24h != null && ta.cmp != null) ? Math.min(ta.low24h, ta.cmp) : ta.low24h;
-  const barHigh = (ta.high24h != null && ta.cmp != null) ? Math.max(ta.high24h, ta.cmp) : ta.high24h;
+  // Today's UTC candle range. The live price is a real observed price, so it can only widen the
+  // range (a wick since the last OHLC fetch is the one thing this can't see — hence the 'as of').
+  const dayC = getDayCandle(item.id);
+  const todayChg = getTodayChangePct(item.id);
+  const hasRange = dayC && dayC.low != null && dayC.high != null;
+  const barLow = hasRange ? (ta.cmp != null ? Math.min(dayC.low, ta.cmp) : dayC.low) : null;
+  const barHigh = hasRange ? (ta.cmp != null ? Math.max(dayC.high, ta.cmp) : dayC.high) : null;
   const barPct = (barLow != null && barHigh != null && ta.cmp != null && barHigh !== barLow)
     ? Math.max(0, Math.min(100, (ta.cmp - barLow) / (barHigh - barLow) * 100))
     : 50;
@@ -2006,11 +2094,12 @@ function expandRowCore(tr, item, forceReExpand) {
       <div class="price-bar-wrap">
         <div class="price-bar-header">
           <span class="price-bar-cmp">${ta.cmp == null ? '—' : formatINR(ta.cmp, precision)}</span>
-          <span class="price-bar-change ${ta.change24h == null ? '' : ta.change24h >= 0 ? 'buy' : 'sell'}">${ta.change24h == null ? '—' : (ta.change24h >= 0 ? '+' : '') + ta.change24h.toFixed(2) + '% (24h)'}</span>
+          <span class="price-bar-change ${todayChg == null ? '' : todayChg >= 0 ? 'buy' : 'sell'}">${todayChg == null ? '—' : (todayChg >= 0 ? '+' : '') + todayChg.toFixed(2) + '% (today)'}</span>
         </div>
-        ${(barLow == null || barHigh == null) ? '' : `
+        ${(barLow == null || barHigh == null) ? `<div class="price-bar-labels"><span>${dayC ? 'Today\'s range unavailable — CoinGecko is missing a candle' : 'Today\'s candle unavailable — waiting on CoinGecko OHLC'}</span></div>` : `
         <div class="price-bar-track"><div class="price-bar-marker" style="left:${barPct}%"></div></div>
-        <div class="price-bar-labels"><span>${formatINR(barLow, precision)}</span><span>${formatINR(barHigh, precision)}</span></div>
+        <div class="price-bar-labels"><span>L ${formatINR(barLow, precision)}</span><span>O ${formatINR(dayC.open, precision)}</span><span>H ${formatINR(barHigh, precision)}</span></div>
+        <div class="price-bar-labels"><span>Today, UTC day · as of ${new Date(dayC.fetchedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span></div>
         `}
       </div>
       <div class="detail-grid">
@@ -2103,8 +2192,8 @@ function applyCurrentSort() {
       valA = pctA == null ? -999999 : pctA;
       valB = pctB == null ? -999999 : pctB;
     } else if (currentSortColumn === 'change24h') {
-      const chgA = marketDataCache[a.id]?.change_24h;
-      const chgB = marketDataCache[b.id]?.change_24h;
+      const chgA = getTodayChangePct(a.id);
+      const chgB = getTodayChangePct(b.id);
       valA = chgA == null ? -999999 : chgA;
       valB = chgB == null ? -999999 : chgB;
     } else {
@@ -2348,6 +2437,7 @@ if (isApiReachable) {
   recomputeHoldingSignals();
   updateScheduledStatus();
   fetchTaForPortfolio(startTaIds);
+  refreshDayCandles(startIds);
 } else {
   scheduleApiRecheck();
 }
