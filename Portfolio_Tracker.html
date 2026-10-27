@@ -161,10 +161,10 @@ th {
 th.sortable { cursor: pointer; user-select: none; }
 th.sortable:hover { color: var(--text); }
 .sort-arrow { margin-left: 4px; color: var(--accent); font-weight: 700; }
-tbody tr.main-row { border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.12s ease; scroll-margin-top: 40px; }
+tbody tr.main-row { border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.12s ease; scroll-margin-top: 6px; }
 tbody tr.main-row:hover { background: rgba(255,255,255,0.025); }
 tbody tr.main-row:last-child { border-bottom: none; }
-td[data-col="coin"] { max-width: 44px; overflow: hidden; text-overflow: ellipsis; }
+td[data-col="coin"] { overflow: hidden; text-overflow: ellipsis; }
 .coin-name { font-weight: 600; font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; }
 .health-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; margin-right: 2px; flex-shrink: 0; }
 .target-input {
@@ -180,76 +180,11 @@ td[data-col="coin"] { max-width: 44px; overflow: hidden; text-overflow: ellipsis
 .gain-pos { color: var(--buy); font-weight: 600; }
 .gain-neg { color: var(--sell); font-weight: 600; }
 .gain-na { color: var(--muted-2); }
-.price-change-24h { display: block; font-size: 9px; font-weight: 600; margin-top: 1px; line-height: 1.1; }
 .signal-cell { min-width: 0; }
-.signal-wrap { display: flex; align-items: center; justify-content: center; gap: 8px; }
-.signal-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-weight: 700;
-  font-size: 10px;
-  letter-spacing: 0.02em;
-}
-.signal-badge.sell { color: var(--sell); }
-.signal-badge.dca { color: var(--dca); }
-.signal-badge.trim { color: var(--trim); }
-.signal-badge.swing { color: var(--swing); }
-.signal-badge.hold { color: var(--hold); }
-.signal-badge.na { color: var(--muted-2); }
+.signal-wrap { display: flex; align-items: center; justify-content: center; gap: 3px; }
 .empty-row td { text-align: center; color: var(--muted-2); padding: 32px 12px; }
-.detail-row td { padding: 0; background: var(--panel-2); white-space: normal; }
 .detail-box { padding: 10px; transition: opacity 0.1s ease; touch-action: pan-y; }
 .detail-box.swipe-out { opacity: 0.3; }
-.detail-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 8px 12px;
-  margin-bottom: 8px;
-  min-width: 0;
-}
-.detail-group-title {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  font-weight: 700;
-  color: var(--accent);
-  margin: 12px 0 6px;
-  opacity: 0.85;
-}
-.detail-group-title:first-child { margin-top: 0; }
-.price-bar-wrap { margin: 2px 0 14px; }
-.price-bar-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
-.price-bar-cmp { font-family: var(--font-mono); font-size: 15px; font-weight: 700; color: var(--text); }
-.price-bar-change { font-family: var(--font-mono); font-size: 11px; font-weight: 600; }
-.price-bar-change.buy { color: var(--buy); }
-.price-bar-change.sell { color: var(--sell); }
-.price-bar-track { position: relative; height: 8px; border-radius: 4px; background: linear-gradient(90deg, rgba(255,92,114,0.5) 0%, rgba(86,99,116,0.35) 50%, rgba(47,213,118,0.5) 100%); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08); }
-.price-bar-marker { position: absolute; top: 50%; width: 15px; height: 15px; border-radius: 50%; background: var(--accent); border: 3px solid var(--bg); transform: translate(-50%, -50%); box-shadow: 0 0 0 2px var(--accent), 0 0 10px 2px rgba(76,141,255,0.55); }
-.price-bar-labels { display: flex; justify-content: space-between; margin-top: 4px; font-family: var(--font-mono); font-size: 10px; color: var(--muted-2); }
-.detail-item { min-width: 0; }
-.detail-item.signal-input {
-  background: var(--panel);
-  border: 1px solid rgba(76,141,255,0.3);
-  border-radius: var(--r-sm);
-  padding: 6px 7px;
-}
-.detail-item.signal-input .label { color: var(--accent); opacity: 0.95; }
-.detail-grid-headline { margin-bottom: 6px; }
-.detail-item-span2 { grid-column: 1 / -1; display: flex; align-items: baseline; gap: 8px; }
-.detail-item-span2 .label { margin-bottom: 0; }
-.detail-item-span2 .value { font-size: 15px; }
-.detail-item .label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted-2); margin-bottom: 2px; }
-.detail-item .value { font-family: var(--font-mono); font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
-.detail-item .value.buy { color: var(--buy); }
-.detail-item .value.sell { color: var(--sell); }
-.detail-item .value.swing { color: var(--swing); }
-.detail-item .value.target-pct { color: var(--target); }
-.detail-item .value.rsi-value { color: var(--rsi); }
-.detail-item .sub-value { font-family: var(--font-mono); font-size: 10px; color: var(--muted-2); margin-top: 2px; }
-.detail-item .sub-value.buy { color: var(--buy); }
-.detail-item .sub-value.sell { color: var(--sell); }
-.detail-item .sub-value.swing { color: var(--swing); }
 .detail-reason {
   font-size: 11.5px;
   color: var(--muted);
@@ -398,6 +333,135 @@ td[data-col="coin"] { max-width: 44px; overflow: hidden; text-overflow: ellipsis
 .discover-card .dc-add { padding: 4px 10px; font-size: 13px; }
 .discover-card .dc-reason { color: var(--muted); font-size: 12px; margin-top: 6px; line-height: 1.4; }
 .discover-empty { color: var(--muted); font-size: 13px; padding: 10px 2px; }
+
+/* ===== v2 layout: compact table, signal chips, redesigned expanded row ===== */
+:root{ --track:#222d3a; --ring:rgba(76,141,255,0.55); }
+table{table-layout:fixed}
+th{font-size:8.5px;letter-spacing:0;padding:7px 4px}
+td{padding:5px 4px}
+th:first-child,td:first-child{padding-left:9px}
+th:last-child,td:last-child{padding-right:8px}
+td.price-cell{line-height:1.15}
+.px-main{display:block;font-size:10.5px;font-weight:600}
+.price-change-24h{display:block;font-size:9px;font-weight:600;margin-top:1px;line-height:1.1}
+.price-change-24h em{font-style:normal;color:var(--muted-2);font-weight:500}
+.price-change-24h.chg-roll{color:var(--muted)}
+td.numeric{font-size:10.5px}
+.target-display{font-size:10.5px;font-weight:600;border-bottom:1px dashed var(--muted-2);padding:0 0 1px}
+.target-display.target-unset{font-size:9px;font-weight:500;font-family:var(--font-ui);border-bottom-color:var(--border)}
+.target-input{width:100%;min-width:0}
+.gain-cell{font-weight:600}
+.sig-pill{display:inline-block;padding:1px 5px;border-radius:999px;font-weight:700;font-size:9px;letter-spacing:.02em;white-space:nowrap;background:color-mix(in srgb,var(--vc) 15%,transparent);color:var(--vc);border:1px solid color-mix(in srgb,var(--vc) 38%,transparent)}
+.sig-pill.na{background:none;border:0;color:var(--muted-2);padding:0;font-weight:600}
+tbody tr.main-row.open>td{background:var(--panel-2)}
+tbody tr.main-row.open .coin-name{color:var(--accent)}
+.detail-box{padding:0 8px 8px;border-top:1px dashed rgba(76,141,255,0.35)}
+.dx{display:flex;flex-direction:column;gap:7px;padding-top:7px}
+.dx .buy{color:var(--buy)}.dx .sell{color:var(--sell)}.dx .muted{color:var(--muted)}
+.dx-verdict{border-left:3px solid var(--vc);background:color-mix(in srgb,var(--vc) 12%,transparent);border-radius:8px;padding:6px 8px;display:flex;gap:8px;align-items:flex-start}
+.dx-vp{flex:none;padding:2px 8px;border-radius:999px;font-weight:700;font-size:10px;background:var(--vc);color:#06101f;white-space:nowrap}
+.dx-verdict p{margin:0;font-size:11px;line-height:1.35}
+.dx h3{margin:0 0 3px;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.dx-gate{display:grid;grid-template-columns:14px 1fr auto;gap:7px;align-items:center;padding:3px 0;border-top:1px solid var(--border)}
+.dx-gate:first-of-type{border-top:0}
+.dx-ic{width:14px;height:14px;border-radius:50%;display:grid;place-items:center;font-size:9px;font-weight:700;color:#06101f}
+.dx-ic.ok{background:var(--buy)}.dx-ic.no{background:var(--sell)}.dx-ic.na{background:var(--muted)}
+.dx-l{font-weight:600;font-size:10.5px}
+.dx-gs{display:block;font-family:var(--font-mono);font-weight:400;font-size:9px;line-height:1.3;color:var(--muted);text-align:right}
+.dx-v{font-family:var(--font-mono);font-size:10.5px;text-align:right;white-space:nowrap}
+.dx-v b.na{color:var(--muted)}
+.dx-req{color:var(--muted)}
+.dx-oth{font-size:9.5px;color:var(--muted);margin-top:3px}
+.dx-rng{display:grid;grid-template-columns:50px auto 1fr auto;gap:6px;align-items:center;font-family:var(--font-mono);font-size:9.5px;margin-top:5px;color:var(--muted)}
+.dx-rng b{font-family:var(--font-ui);font-size:10px;color:var(--text);white-space:nowrap}
+.dx-bar{position:relative;height:6px;border-radius:3px;background:var(--track);margin:0 6px}
+.dx-bar .m{position:absolute;top:50%;width:12px;height:12px;border-radius:50%;background:var(--accent);border:2px solid var(--panel-2);transform:translate(-50%,-50%);box-shadow:0 0 0 1.5px var(--accent)}
+.dx-bar .o{position:absolute;top:-3px;width:2px;height:12px;background:var(--muted);transform:translateX(-50%)}
+.dx-met{display:flex;flex-wrap:wrap;justify-content:space-between;column-gap:8px;font-family:var(--font-mono);font-size:9.5px;color:var(--muted);margin:2px 0 0 56px}
+.dx-met b{color:var(--text);font-weight:600}
+.dx-met .dt{font-style:normal;margin:0 .3em}
+@media (max-width:380px){.dx-met{font-size:9px}}
+.dx-met div:last-child{text-align:right;margin-left:auto}
+.dx-sub{font-family:var(--font-mono);font-size:9.5px;color:var(--muted);margin:1px 0 0 56px}
+.dx-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}
+.dx-cell{background:var(--bg);border-radius:8px;padding:6px 8px;min-width:0}
+.dx-cell .k{font-size:9px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dx-cell .n{font-family:var(--font-mono);font-weight:700;font-size:11px;margin-top:1px}
+.dx-cell .s{font-size:9px;color:var(--muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dx-liq{display:flex;flex-wrap:wrap;gap:1px 9px;font-size:9.5px;color:var(--muted)}
+.dx-liq b{color:var(--text);font-weight:600}
+.dx-cell .n.rsi{color:var(--rsi)}.dx-cell .n.tgt{color:var(--target)}
+.dx-hint{font-size:9px;color:var(--muted-2);margin-top:3px}
+.dx-acts{display:flex;gap:6px;align-items:stretch}
+.dx-acts>*{flex:1;display:flex;align-items:center;justify-content:center;text-align:center;padding:6px;border-radius:8px;border:1px solid var(--border);font-weight:600;font-size:10.5px;background:transparent;margin:0;width:auto;text-decoration:none;white-space:nowrap}
+.dx-acts .chart-toggle-btn{color:var(--text)}
+.dx-acts .chart-external-link{color:var(--text)}
+.dx-acts .detail-remove-btn{flex:none;padding:7px 10px;color:var(--sell);background:transparent;border:1px solid var(--border)}
+.dx .dca-log-row{margin-top:0;padding-top:0;border-top:0}
+.dx .dca-log-btn,.dx .dca-log-clear-btn{padding:4px 10px}
+.dx .chart-container{margin-top:0}
+.activity-log-container{background:var(--panel)}
+
+/* ===== Android-style coin popup: bottom sheet on phones, centred dialog on wide screens ===== */
+html.cp-locked, body.cp-locked{overflow:hidden}
+.cp-overlay{position:fixed;inset:0;z-index:100;display:flex;align-items:flex-end;justify-content:center;background:rgba(2,5,9,0);visibility:hidden;pointer-events:none;overscroll-behavior:contain;transition:background .22s ease,visibility 0s linear .26s}
+.cp-overlay.open{background:rgba(2,5,9,.64);visibility:visible;pointer-events:auto;transition:background .22s ease,visibility 0s}
+.cp-sheet{--vc:var(--muted-2);position:relative;width:100%;max-width:620px;max-height:90vh;max-height:min(92dvh,calc(100dvh - env(safe-area-inset-top,0px) - 24px));display:flex;flex-direction:column;overflow:hidden;background:var(--panel-2);border:1px solid var(--border);border-bottom:0;border-radius:22px 22px 0 0;box-shadow:0 -14px 44px rgba(0,0,0,.55);transform:translateY(100%);transition:transform .28s cubic-bezier(.2,.8,.2,1);padding-bottom:env(safe-area-inset-bottom,0px);outline:none;will-change:transform}
+.cp-overlay.open .cp-sheet{transform:translateY(0)}
+.cp-grab{flex:none;width:34px;height:4px;border-radius:2px;background:rgba(255,255,255,.24);margin:7px auto 2px;touch-action:none}
+.cp-header{flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px;padding:2px 10px 8px 14px;border-bottom:1px solid var(--border);box-shadow:inset 0 -2px 0 color-mix(in srgb,var(--vc) 60%,transparent);touch-action:none}
+.cp-titles{flex:1 1 0;min-width:0;display:flex;align-items:baseline;gap:7px}
+.cp-sym{font-size:17px;font-weight:700;letter-spacing:-.01em;line-height:1.2;white-space:nowrap}
+.cp-name{font-size:10.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.cp-navs{display:flex;align-items:center;gap:0;flex:none}
+.cp-count{min-width:34px;text-align:center;font-family:var(--font-mono);font-size:10px;color:var(--muted)}
+.cp-icon{flex:none;width:36px;height:36px;padding:0;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.06);color:var(--text);border:1px solid var(--border)}
+.cp-icon svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.cp-icon:active:not(:disabled){background:rgba(255,255,255,.14)}
+.cp-price{flex:1 0 100%;display:flex;flex-wrap:wrap;align-items:baseline;gap:1px 10px;line-height:1.25}
+.cp-price .px-main{display:inline;font-size:15px;font-weight:700}
+.cp-price .price-change-24h{display:inline;margin:0 0 0 7px;font-size:10.5px}
+.cp-target{margin-left:auto;font-family:var(--font-mono);font-size:10.5px;color:var(--muted);white-space:nowrap}
+.cp-target b{color:var(--text);font-weight:600}
+.cp-target .up{color:var(--buy);font-weight:700}
+.cp-target .dn{color:var(--sell);font-weight:700}
+.cp-body{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding-bottom:6px}
+.coin-popup:focus{outline:none}
+.coin-popup button:focus-visible,.coin-popup a:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+
+/* content keeps the original compact .dx sizes; only layout glue is adjusted for the popup */
+.coin-popup .detail-box{padding:0 12px 4px;border-top:0;touch-action:auto;white-space:normal}
+.coin-popup .detail-box.cp-fresh{animation:cpFresh .18s ease-out}
+@keyframes cpFresh{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.coin-popup .detail-reason{border-top:0;padding-top:10px}
+.coin-popup .dx{padding-top:9px}
+.coin-popup .dx>:not(.chart-container){touch-action:pan-y}
+.coin-popup .dx-gate{grid-template-columns:14px minmax(0,1fr) fit-content(62%)}
+.coin-popup .dx-v{white-space:normal;min-width:0}
+.coin-popup .dx-v b{white-space:nowrap}
+.coin-popup .dx-gs{white-space:normal;overflow-wrap:anywhere}
+.coin-popup .dx .dca-log-btn,.coin-popup .dx .dca-log-clear-btn{padding:6px 12px;min-height:30px}
+.coin-popup .dx-acts{flex-wrap:wrap}
+.coin-popup .dx-acts>*{flex:1 1 auto;min-height:34px}
+.coin-popup .dx-acts .detail-remove-btn{flex:0 0 auto}
+.coin-popup .chart-toggle-row{margin-top:10px}
+.dca-hist{display:flex;flex-direction:column;margin-top:5px}
+.dca-hist-row{display:flex;align-items:center;gap:8px;padding:3px 0;border-top:1px solid var(--border);font-family:var(--font-mono);font-size:10px;color:var(--muted)}
+.dca-hist-row .d{flex:1}
+.dca-hist-row b{color:var(--text);font-weight:600}
+.dca-del-btn{flex:none;width:24px;height:24px;padding:0;border-radius:50%;background:transparent;color:var(--muted-2);border:1px solid var(--border);font-size:10px;line-height:1}
+.dca-hist-note{font-size:9px;color:var(--muted-2);margin-top:3px}
+@media (min-width:700px),(max-height:520px) and (min-width:560px){
+  .cp-overlay{align-items:center}
+  .cp-sheet{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);border-radius:20px;border-bottom:1px solid var(--border);padding-bottom:0;transform:translateY(14px) scale(.98);opacity:0;transition:transform .2s ease,opacity .2s ease}
+  .cp-overlay.open .cp-sheet{transform:none;opacity:1}
+  .cp-grab{display:none}
+  .cp-header{padding-top:10px}
+}
+@media (prefers-reduced-motion:reduce){
+  .cp-overlay,.cp-sheet{transition:none!important}
+  .coin-popup .detail-box.cp-fresh{animation:none}
+}
 </style>
 </head>
 <body>
@@ -420,6 +484,7 @@ td[data-col="coin"] { max-width: 44px; overflow: hidden; text-overflow: ellipsis
 
 <div class="table-scroll-wrapper">
 <table aria-live="polite" id="portfolioTable">
+<colgroup><col style="width:15.8%"><col style="width:22.5%"><col style="width:18.3%"><col style="width:16.7%"><col style="width:26.7%"></colgroup>
 <thead>
 <tr>
 <th>Coin</th>
@@ -446,6 +511,26 @@ td[data-col="coin"] { max-width: 44px; overflow: hidden; text-overflow: ellipsis
   <div id="statusLine" class="status-line"><span class="sl-dot"></span><span id="statusLineText">Prices — · TA —</span></div>
 </div>
 
+<div id="coinPopupOverlay" class="cp-overlay" aria-hidden="true">
+  <div id="coinPopup" class="cp-sheet coin-popup" role="dialog" aria-modal="true" aria-labelledby="cpSym" tabindex="-1">
+    <div class="cp-grab" aria-hidden="true"></div>
+    <div class="cp-header" id="cpHeader">
+      <div class="cp-titles">
+        <div class="cp-sym" id="cpSym"></div>
+        <div class="cp-name" id="cpName"></div>
+      </div>
+      <div class="cp-navs">
+        <button type="button" class="cp-icon" id="cpPrev" aria-label="Previous coin"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <span class="cp-count" id="cpCount" aria-live="polite"></span>
+        <button type="button" class="cp-icon" id="cpNext" aria-label="Next coin"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></button>
+      </div>
+      <button type="button" class="cp-icon" id="cpClose" aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      <div class="cp-price"><span id="cpPx"></span><span class="cp-target" id="cpTarget"></span></div>
+    </div>
+    <div class="cp-body" id="coinPopupBody"></div>
+  </div>
+</div>
+
 <script defer>
 (async function () {
 
@@ -464,6 +549,19 @@ const signalSortArrow = document.getElementById('signalSortArrow');
 const priceSortArrow  = document.getElementById('priceSortArrow');
 const discoverBtn     = document.getElementById('discoverBtn');
 const discoverResults = document.getElementById('discoverResults');
+const appRoot         = document.querySelector('.app');
+const popupOverlay    = document.getElementById('coinPopupOverlay');
+const popupSheet      = document.getElementById('coinPopup');
+const popupHeader     = document.getElementById('cpHeader');
+const popupBody       = document.getElementById('coinPopupBody');
+const cpSym           = document.getElementById('cpSym');
+const cpName          = document.getElementById('cpName');
+const cpCount         = document.getElementById('cpCount');
+const cpPx            = document.getElementById('cpPx');
+const cpTarget        = document.getElementById('cpTarget');
+const cpPrev          = document.getElementById('cpPrev');
+const cpNext          = document.getElementById('cpNext');
+const cpClose         = document.getElementById('cpClose');
 
 const API_KEY = 'CG-G1MtEv33nwCgRyvF4YNsKyDs';
 const API_BASE = 'https://api.coingecko.com/api/v3';
@@ -542,10 +640,10 @@ const ATL_PROXIMITY_PCT = 10;
 // A single fixed cutoff misses the first group's real bottoms and is loose for the second. So
 // "oversold" is instead defined per coin: the ~15th percentile of its OWN RSI history (i.e. where
 // this specific coin's RSI has actually spent time before, historically, near past bottoms).
-const RSI_OVERSOLD_PERCENTILE = 15;
+const RSI_OVERSOLD_PERCENTILE = 10;   // tightened from 15: capital for adds is limited, so only extreme oversold qualifies
 const RSI_OVERSOLD_MIN_SAMPLES = 60; // need a reasonable amount of RSI history before trusting a per-coin threshold
 const RSI_OVERSOLD_FLOOR = 20; // sanity bounds so thin/erratic history can't produce a pointlessly strict or loose threshold
-const RSI_OVERSOLD_CEIL = 45;
+const RSI_OVERSOLD_CEIL = 35;        // tightened from 45: 45 is near-neutral, not oversold
 // Mirrors the oversold logic above for the top side, but deliberately stricter: this is meant to
 // flag only genuinely extreme, blow-off-top conditions worth swing-selling into — not just "a bit
 // hot" — so it clamps to a much narrower, higher band (80-92) than the oversold side's 20-45, and
@@ -572,7 +670,7 @@ const DISCOVER_MAX_TA_FETCHES = 25;
 
 const EMA_TREND_LONG = 200;
 
-const TA_LOGIC_VERSION = 17; // bumped: RSI overbought band tightened to 80-92 (97th pct) for extreme-only SWING TRIM
+const TA_LOGIC_VERSION = 18; // bumped: ACCUMULATE RSI tightened (10th pct, ceiling 35) + last closed-day RSI must also be oversold; earlier: overbought band 80-92 (97th pct)
 const TA_FETCH_VERSION = 7; // bumped: 90d extremes now from hourly data (exact window) + in-window OHLC wicks; 365d extremes from OHLC wicks
 
 let saved             = JSON.parse(localStorage.getItem('shortfall_portfolio') || '[]');
@@ -580,6 +678,7 @@ let pricesCache       = JSON.parse(localStorage.getItem('shortfall_prices') || '
 let marketDataCache   = JSON.parse(localStorage.getItem('shortfall_market_data') || '{}');
 let holdingSignalCache = JSON.parse(localStorage.getItem('shortfall_holding_signals') || '{}');
 let dcaLogCache = JSON.parse(localStorage.getItem('shortfall_dca_log') || '{}');
+const DCA_HISTORY_MAX = 50; // log entries kept per coin (the newest-dated one is the gap-check anchor)
 let taCache            = JSON.parse(localStorage.getItem('shortfall_ta_data') || '{}');
 let dayCandleCache     = JSON.parse(localStorage.getItem('shortfall_day_candle') || '{}');
 
@@ -587,7 +686,15 @@ let coinList = [];
 let symbolIndex = {};
 let portfolioMap = {};
 
-let expandedRowId = null;
+let expandedRowId = null;   // id of the coin shown in the popup (null = popup closed)
+let coinPopupOpen = false;
+let popupShownId = null;
+let popupLastHtml = '';
+let popupCloseTimer = null;
+let popupLastFocus = null;
+let popupBackdropDown = false;
+let popupScrollLocked = false;
+let popupPrevPadRight = '';
 let refreshPriceTimer = null;
 let recheckTimer = null;
 let coinListLoaded = false;
@@ -624,6 +731,7 @@ const pctToTarget = (cur, tgt) => {
   if (cur == null || tgt == null || isNaN(cur) || isNaN(tgt) || cur === 0) return null;
   return ((tgt - cur) / cur) * 100;
 };
+const formatPctShort = (val) => (val == null || isNaN(val)) ? '—' : (Math.abs(val) >= 100 ? `${val > 0 ? '+' : val < 0 ? '−' : ''}${Math.abs(val).toLocaleString('en-IN', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%` : `${val > 0 ? '+' : val < 0 ? '−' : ''}${Math.abs(val).toFixed(1)}%`);
 const formatPct = (val) => (val == null || isNaN(val)) ? 'N/A' : `${val > 0 ? '+' : ''}${val.toFixed(2)}%`;
 
 const save                 = () => localStorage.setItem('shortfall_portfolio', JSON.stringify(saved));
@@ -902,6 +1010,20 @@ function getTodayChangePct(id) {
   const cur = pricesCache[id] ?? marketDataCache[id]?.current_price;
   if (!c || cur == null) return null;
   return (cur - c.open) / c.open * 100;
+}
+
+// CoinGecko's rolling 24h % (from the price call). Never mixed with the candle figure: wherever it is
+// shown as a fallback it carries an explicit '24h' tag.
+function getRollingChangePct(id) {
+  const v = marketDataCache[id]?.change_24h;
+  return (v != null && isFinite(v)) ? v : null;
+}
+// What the table shows/sorts by: today's candle move if available, else the tagged rolling 24h.
+function getDisplayChange(id) {
+  const t = getTodayChangePct(id);
+  if (t != null) return { pct: t, rolling: false };
+  const r = getRollingChangePct(id);
+  return r != null ? { pct: r, rolling: true } : null;
 }
 
 async function fetchTaHistory(id) {
@@ -1366,7 +1488,11 @@ function classifyHolding(md, item, ta, macroTa) {
       const nearLowThresholdPct = ta.nearLowThresholdPct ?? DCA_DIP_NEAR_PCT;
       const nearLow = aboveLow <= nearLowThresholdPct;
       const rsiThreshold = ta.rsiOversoldThreshold ?? RSI_OVERSOLD;
-      const rsiOversold = liveRsi != null && liveRsi <= rsiThreshold;
+      // Both the live reading AND the last closed daily RSI must be oversold: the live RSI includes
+      // today's unfinished price, so an intraday spike down alone isn't enough to add.
+      const rsiLiveOversold = liveRsi != null && liveRsi <= rsiThreshold;
+      const rsiClosedOversold = ta.rsi != null && ta.rsi <= rsiThreshold;
+      const rsiOversold = rsiLiveOversold && rsiClosedOversold;
       const avgDailyMove = ta.avgDailyMove ?? null;
       const atLow = nearLow && rsiOversold;
       if (atLow) {
@@ -1394,7 +1520,9 @@ function classifyHolding(md, item, ta, macroTa) {
           reason = `Still meets add conditions (day ${dcaStreakDay}), but ${positionNote}. Needs ≥${dynGapPct.toFixed(1)}% below that — next DCA near ${formatINR(nextDcaPrice, pricePrecisionFor(nextDcaPrice))}. Held at WAIT.${relStrengthNote}`;
         }
       } else {
-        if (nearLow && !rsiOversold) {
+        if (nearLow && rsiLiveOversold && !rsiClosedOversold) {
+          reason = `${depth.toFixed(0)}% below ATH${yrNote}, near its ${ta.rollingLowWindowDays}d low, live RSI ${liveRsi.toFixed(2)} is oversold (≤${rsiThreshold.toFixed(0)}), but the last daily close (RSI ${ta.rsi == null ? '—' : ta.rsi.toFixed(2)}) hasn't confirmed it yet — waiting for a daily close.`;
+        } else if (nearLow && !rsiOversold) {
           reason = `${depth.toFixed(0)}% below ATH${yrNote}, near its ${ta.rollingLowWindowDays}d low, but RSI (${liveRsi == null ? '—' : liveRsi.toFixed(2)}) hasn't reached this coin's own oversold zone (≤${rsiThreshold.toFixed(0)}) yet.`;
         } else {
           reason = `${depth.toFixed(0)}% below ATH${yrNote}, but ${Math.abs(aboveLow).toFixed(1)}% ${aboveLow >= 0 ? 'above' : 'below'} its ${ta.rollingLowWindowDays}d low — outside this coin's own ≤${nearLowThresholdPct.toFixed(1)}% near-low band.`;
@@ -1692,6 +1820,8 @@ function healthOf(id) {
     : { color: 'var(--buy)', shortLabel: '', fresh: true };
 }
 
+const SIG_COLOR = { sell: 'var(--sell)', dca: 'var(--dca)', trim: 'var(--trim)', swing: 'var(--swing)', hold: 'var(--hold)', na: 'var(--muted-2)' };
+
 function signalCellHTML(id) {
   const ta = holdingSignalCache[id];
   const health = healthOf(id);
@@ -1702,7 +1832,7 @@ function signalCellHTML(id) {
     return {
       html: `<div class="signal-wrap">
         <span class="health-dot" style="background:${health.color}"></span>
-        <span class="signal-badge na">${label}</span>
+        <span class="sig-pill na">${label}</span>
       </div>`
     };
   }
@@ -1710,14 +1840,14 @@ function signalCellHTML(id) {
     return {
       html: `<div class="signal-wrap">
         <span class="health-dot" style="background:${health.color}"></span>
-        <span class="signal-badge na">${!marketDataCache[id] ? 'No data' : 'Pending'}</span>
+        <span class="sig-pill na">${!marketDataCache[id] ? 'No data' : 'Pending'}</span>
       </div>`
     };
   }
-  const label = `${SIGNAL_LABELS_SHORT[ta.signal] || ta.signal} (${ta.strength}%)${ta.signal === 'ACCUMULATE' && ta.dcaStreakDay ? ` · D${ta.dcaStreakDay}` : ''}`;
+  const label = `${SIGNAL_LABELS_SHORT[ta.signal] || ta.signal} ${ta.strength}%${ta.signal === 'ACCUMULATE' && ta.dcaStreakDay ? `·D${ta.dcaStreakDay}` : ''}`;
   const html = `<div class="signal-wrap">
       <span class="health-dot" style="background:${health.color}"></span>
-      <span class="signal-badge ${ta.colorKey}">${label}</span>
+      <span class="sig-pill" style="--vc:${SIG_COLOR[ta.colorKey] || SIG_COLOR.hold}">${label}</span>
     </div>`;
   return { html };
 }
@@ -1737,8 +1867,29 @@ function removeCoin(id, symbol) {
   saveHoldingSignals();
   saveTaData();
   saveDcaLog();
-  if (expandedRowId === id) expandedRowId = null;
+  if (expandedRowId === id) closeCoinPopup();
   renderTable();
+}
+
+// DCA log. `dcaLogCache[id]` keeps its original shape ({price, dateStr, timestamp}) because the
+// signal engine reads `.price` as the "last DCA" anchor; a `history` array rides along so a missed
+// or back-dated entry can be added without clobbering a newer one. The anchor is always the
+// newest-DATED entry (ties: most recently logged).
+function dcaHistoryOf(id) {
+  const e = dcaLogCache[id];
+  if (!e) return [];
+  if (Array.isArray(e.history) && e.history.length) return e.history.slice();
+  return (e.price > 0) ? [{ price: e.price, dateStr: e.dateStr, timestamp: e.timestamp }] : [];
+}
+
+function setDcaHistory(id, history) {
+  const sorted = history
+    .filter(h => h && h.price > 0)
+    .sort((a, b) => (b.dateStr || '').localeCompare(a.dateStr || '') || ((b.timestamp || 0) - (a.timestamp || 0)))
+    .slice(0, DCA_HISTORY_MAX);
+  if (!sorted.length) { delete dcaLogCache[id]; return; }
+  const top = sorted[0];
+  dcaLogCache[id] = { price: top.price, dateStr: top.dateStr, timestamp: top.timestamp, history: sorted };
 }
 
 function logDcaLevel(id, symbol) {
@@ -1746,9 +1897,27 @@ function logDcaLevel(id, symbol) {
   const suggested = cur != null ? cur.toString() : '';
   const input = prompt(`Log the price you actually DCA'd ${symbol} at (defaults to current price — edit if you bought at a different price):`, suggested);
   if (input === null) return;
-  const price = parseFloat(input);
+  const price = parseFloat(String(input).replace(/,/g, ''));
   if (!price || price <= 0) { alert('Enter a valid price.'); return; }
-  dcaLogCache[id] = { price, dateStr: istDateStr(Date.now()), timestamp: Date.now() };
+  const today = istDateStr(Date.now());
+  const dateIn = prompt(`Date of this ${symbol} DCA (YYYY-MM-DD, IST). Keep today's date, or change it to back-fill a missed entry:`, today);
+  if (dateIn === null) return;
+  const dateStr = dateIn.trim();
+  const parsed = /^\d{4}-\d{2}-\d{2}$/.test(dateStr) ? new Date(dateStr + 'T00:00:00Z') : null;
+  if (!parsed || isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== dateStr) { alert('Enter the date as YYYY-MM-DD.'); return; }
+  if (dateStr > today) { alert('The date can\u2019t be in the future.'); return; }
+  setDcaHistory(id, dcaHistoryOf(id).concat({ price, dateStr, timestamp: Date.now() }));
+  saveDcaLog();
+  recomputeHoldingSignals();
+  renderTable();
+}
+
+function removeDcaEntry(id, symbol, ts) {
+  const hist = dcaHistoryOf(id);
+  const keep = hist.filter(h => h.timestamp !== ts);
+  if (keep.length === hist.length) return;
+  if (!confirm(`Delete this logged ${symbol} DCA entry?`)) return;
+  setDcaHistory(id, keep);
   saveDcaLog();
   recomputeHoldingSignals();
   renderTable();
@@ -1818,9 +1987,11 @@ function toggleChart(id, symbol, btn) {
 
 function priceCellHTML(id, cur) {
   if (!cur) return '<span class="gain-na">—</span>';
-  const chg24h = getTodayChangePct(id);
-  const chgHtml = chg24h == null ? '' : `<span class="price-change-24h ${chg24h >= 0 ? 'gain-pos' : 'gain-neg'}">${formatPct(chg24h)}</span>`;
-  return `${formatINR(cur, pricePrecisionFor(cur), true)}${chgHtml}`;
+  const chg = getDisplayChange(id);
+  const chgHtml = chg == null ? '' : chg.rolling
+    ? `<span class="price-change-24h chg-roll" title="Rolling 24h (today's candle not available yet)">${formatPct(chg.pct)} <em>24h</em></span>`
+    : `<span class="price-change-24h ${chg.pct >= 0 ? 'gain-pos' : 'gain-neg'}" title="Today's UTC candle">${formatPct(chg.pct)}</span>`;
+  return `<span class="px-main">${formatINR(cur, pricePrecisionFor(cur), true)}</span>${chgHtml}`;
 }
 
 function targetCellHTML(item) {
@@ -1880,38 +2051,201 @@ document.addEventListener('click', (e) => {
   beginTargetEdit(e.target);
 });
 
-// Swipe left/right on an expanded detail box to jump to the next/previous
-// coin in the currently sorted list, without collapsing back to the table.
+// ===== Android-style coin popup =====================================================================
+// Replaces the old inline "detail row". A single popup element lives in the page for the whole
+// session; opening, refreshing, swiping to another coin and closing only re-render its header/body,
+// so nothing is ever created twice and no listener is ever added twice. The popup's buttons use one
+// delegated listener on its body, so they keep working across re-renders.
+function lockPageScroll() {
+  if (popupScrollLocked) return;
+  // On desktop, hiding the scrollbar would widen the page and nudge the layout; pad by its width.
+  const sbw = Math.max(0, window.innerWidth - document.documentElement.clientWidth)
+            + Math.max(0, document.body.offsetWidth - document.body.clientWidth);
+  popupPrevPadRight = document.body.style.paddingRight;
+  if (sbw > 0) document.body.style.paddingRight = (parseFloat(getComputedStyle(document.body).paddingRight) + sbw) + 'px';
+  document.documentElement.classList.add('cp-locked');
+  document.body.classList.add('cp-locked');
+  popupScrollLocked = true;
+}
+
+function unlockPageScroll() {
+  if (!popupScrollLocked) return;
+  document.documentElement.classList.remove('cp-locked');
+  document.body.classList.remove('cp-locked');
+  document.body.style.paddingRight = popupPrevPadRight;
+  popupScrollLocked = false;
+}
+
+function openCoinPopupShell() {
+  if (coinPopupOpen) return;
+  clearTimeout(popupCloseTimer);
+  popupLastFocus = document.activeElement;
+  coinPopupOpen = true;
+  popupBackdropDown = false;
+  lockPageScroll();
+  appRoot.inert = true;                       // keeps focus and taps out of the page behind the popup
+  popupOverlay.setAttribute('aria-hidden', 'false');
+  void popupOverlay.offsetWidth;              // let the slide-in start from the closed state
+  popupOverlay.classList.add('open');
+  popupSheet.focus({ preventScroll: true });
+}
+
+function closeCoinPopup() {
+  expandedRowId = null;
+  tableBody.querySelectorAll('tr.main-row.open').forEach(r => r.classList.remove('open'));
+  if (!coinPopupOpen) return;
+  coinPopupOpen = false;
+  popupShownId = null;
+  popupLastHtml = '';
+  swipeState = null;
+  dragState = null;
+  popupSheet.style.transition = '';
+  popupSheet.style.transform = '';
+  popupOverlay.classList.remove('open');
+  popupOverlay.setAttribute('aria-hidden', 'true');
+  appRoot.inert = false;
+  unlockPageScroll();
+  const back = popupLastFocus;
+  popupLastFocus = null;
+  if (back && back.isConnected && typeof back.focus === 'function' && back !== document.body) back.focus({ preventScroll: true });
+  clearTimeout(popupCloseTimer);
+  // Wait for the slide-out, then drop the content (this also tears down any TradingView iframe).
+  popupCloseTimer = setTimeout(() => { if (!coinPopupOpen) popupBody.innerHTML = ''; }, 320);
+}
+
+function presentCoinPopup(item, html, vc) {
+  const sameCoin = coinPopupOpen && popupShownId === item.id;
+  openCoinPopupShell();
+  expandedRowId = item.id;
+
+  const rows = Array.from(tableBody.querySelectorAll('tr.main-row'));
+  const idx = rows.findIndex(r => r.dataset.id === item.id);
+  cpSym.textContent = item.symbol || item.id;
+  cpName.textContent = (item.name && item.name !== item.symbol) ? item.name : '';
+  cpCount.textContent = (rows.length > 1 && idx >= 0) ? `${idx + 1}/${rows.length}` : '';
+  cpPrev.disabled = cpNext.disabled = rows.length < 2;
+  cpPx.innerHTML = priceCellHTML(item.id, pricesCache[item.id] ?? null);
+  const tNum = (item.target != null && item.target !== '' && !isNaN(Number(item.target))) ? Number(item.target) : null;
+  if (tNum == null) {
+    cpTarget.innerHTML = 'Target not set';
+  } else {
+    const toTgt = pctToTarget(pricesCache[item.id] ?? null, tNum);   // same figure as the table's "To target" column
+    cpTarget.innerHTML = `Target <b>${formatINR(tNum, Number.isInteger(tNum) ? 0 : pricePrecisionFor(tNum))}</b> <span class="${toTgt == null ? '' : toTgt >= 0 ? 'up' : 'dn'}">${formatPctShort(toTgt)}</span>`;
+  }
+  popupSheet.style.setProperty('--vc', vc);
+
+  // Same coin + identical markup (e.g. a price tick that changed nothing shown): leave the DOM alone,
+  // which keeps scroll position, any open chart and a mid-tap button intact.
+  if (!sameCoin || html !== popupLastHtml) {
+    const keep = sameCoin ? popupBody.scrollTop : 0;
+    popupBody.innerHTML = html;
+    popupBody.scrollTop = keep;
+    popupLastHtml = html;
+    if (!sameCoin) popupBody.querySelector('.detail-box')?.classList.add('cp-fresh');
+  }
+  popupShownId = item.id;
+}
+
+// close: ✕ button, tap on the dimmed backdrop (only if the press also STARTED on it), Escape key
+cpClose.addEventListener('click', () => closeCoinPopup());
+popupOverlay.addEventListener('pointerdown', (e) => { popupBackdropDown = (e.target === popupOverlay); });
+popupOverlay.addEventListener('click', (e) => {
+  const closeIt = popupBackdropDown && e.target === popupOverlay;
+  popupBackdropDown = false;
+  if (closeIt) closeCoinPopup();
+});
+
+document.addEventListener('keydown', (e) => {
+  if (!coinPopupOpen) return;
+  if (e.key === 'Escape') { e.preventDefault(); closeCoinPopup(); return; }
+  if (e.key !== 'Tab') return;
+  const f = Array.from(popupSheet.querySelectorAll('button:not(:disabled), a[href], input, [tabindex]:not([tabindex="-1"])'))
+    .filter(el => el.offsetParent !== null);
+  if (!f.length) { e.preventDefault(); popupSheet.focus({ preventScroll: true }); return; }
+  const first = f[0], last = f[f.length - 1], active = document.activeElement;
+  if (e.shiftKey && (active === first || active === popupSheet || !popupSheet.contains(active))) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && (active === last || !popupSheet.contains(active))) { e.preventDefault(); first.focus(); }
+});
+
+// previous / next coin buttons (same behaviour as the swipe)
+cpPrev.addEventListener('click', () => navigateExpandedRow(-1, popupBody.querySelector('.detail-box')));
+cpNext.addEventListener('click', () => navigateExpandedRow(1, popupBody.querySelector('.detail-box')));
+
+// every in-popup action goes through this one delegated listener
+popupBody.addEventListener('click', (e) => {
+  const btn = e.target.closest('button');
+  if (!btn || !popupBody.contains(btn)) return;
+  const { id, symbol } = btn.dataset;
+  if (btn.classList.contains('detail-remove-btn')) removeCoin(id, symbol);
+  else if (btn.classList.contains('chart-toggle-btn')) {
+    toggleChart(id, symbol, btn);
+    const c = document.getElementById(`chart-container-${id}`);
+    if (c && c.style.display === 'block') c.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+  else if (btn.classList.contains('dca-log-btn')) logDcaLevel(id, symbol);
+  else if (btn.classList.contains('dca-log-clear-btn')) clearDcaLevel(id, symbol);
+  else if (btn.classList.contains('dca-del-btn')) removeDcaEntry(id, symbol, Number(btn.dataset.ts));
+});
+
+// drag the handle/header down to dismiss (Android bottom-sheet gesture; narrow screens only)
+const DRAG_CLOSE_PX = 90;
+let dragState = null;
+const isSheetLayout = () => window.matchMedia('(max-width: 699.98px)').matches;
+popupSheet.addEventListener('touchstart', (e) => {
+  if (!isSheetLayout() || !e.target.closest('.cp-grab, .cp-header') || e.target.closest('button')) return;
+  dragState = { startY: e.touches[0].clientY, dy: 0 };
+  popupSheet.style.transition = 'none';
+}, { passive: true });
+popupSheet.addEventListener('touchmove', (e) => {
+  if (!dragState) return;
+  dragState.dy = Math.max(0, e.touches[0].clientY - dragState.startY);
+  popupSheet.style.transform = `translateY(${dragState.dy}px)`;
+}, { passive: true });
+const endSheetDrag = (cancelled) => {
+  if (!dragState) return;
+  const dy = dragState.dy;
+  dragState = null;
+  popupSheet.style.transition = '';
+  popupSheet.style.transform = '';
+  if (!cancelled && dy > DRAG_CLOSE_PX) closeCoinPopup();
+};
+popupSheet.addEventListener('touchend', () => endSheetDrag(false));
+popupSheet.addEventListener('touchcancel', () => endSheetDrag(true));
+
+// Swipe left/right on the open popup to jump to the next/previous
+// coin in the currently sorted list, without closing the popup.
 const SWIPE_MIN_DX = 50;
 const SWIPE_EDGE_EXCLUDE_PX = 24; // avoid fighting the browser's edge back/forward gesture
 let swipeState = null;
 
-tableBody.addEventListener('touchstart', (e) => {
+popupBody.addEventListener('touchstart', (e) => {
   const box = e.target.closest('.detail-box');
   if (!box) return;
-  if (e.target.closest('button, a, input')) return;
+  if (e.target.closest('button, a, input, .chart-container')) return;
   const t = e.touches[0];
   if (t.clientX < SWIPE_EDGE_EXCLUDE_PX || t.clientX > window.innerWidth - SWIPE_EDGE_EXCLUDE_PX) return;
   swipeState = { box, startX: t.clientX, startY: t.clientY, dx: 0, dy: 0 };
 }, { passive: true });
 
-tableBody.addEventListener('touchmove', (e) => {
+popupBody.addEventListener('touchmove', (e) => {
   if (!swipeState) return;
   const t = e.touches[0];
   swipeState.dx = t.clientX - swipeState.startX;
   swipeState.dy = t.clientY - swipeState.startY;
 }, { passive: true });
 
-tableBody.addEventListener('touchend', () => {
+popupBody.addEventListener('touchend', () => {
   if (!swipeState) return;
   const { box, dx, dy } = swipeState;
   swipeState = null;
   if (Math.abs(dx) < SWIPE_MIN_DX || Math.abs(dx) < Math.abs(dy) * 1.5) return;
   navigateExpandedRow(dx < 0 ? 1 : -1, box);
 });
+popupBody.addEventListener('touchcancel', () => { swipeState = null; });
 
 function navigateExpandedRow(direction, box) {
   if (!expandedRowId) return;
+  const fromId = expandedRowId;
   const rows = Array.from(tableBody.querySelectorAll('tr.main-row'));
   const idx = rows.findIndex(r => r.dataset.id === expandedRowId);
   if (idx === -1 || rows.length < 2) return;
@@ -1920,25 +2254,28 @@ function navigateExpandedRow(direction, box) {
   const nextItem = portfolioMap[nextTr.dataset.id];
   if (!nextTr || !nextItem) return;
 
+  const go = () => {
+    if (!coinPopupOpen || expandedRowId !== fromId) return;   // closed or already moved on meanwhile
+    expandRowCore(nextTr, nextItem, false);
+    nextTr.scrollIntoView({ block: 'nearest' });              // keep the row in view behind the popup
+  };
   if (box) {
     box.classList.add('swipe-out');
-    setTimeout(() => {
-      expandRowCore(nextTr, nextItem, false);
-      nextTr.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 90);
+    setTimeout(go, 90);
   } else {
-    expandRowCore(nextTr, nextItem, false);
-    nextTr.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    go();
   }
 }
 
 function renderTable() {
   if (saved.length === 0) {
     tableBody.innerHTML = '<tr class="empty-row"><td colspan="5">No coins yet — add one above to start tracking signals.</td></tr>';
+    closeCoinPopup();
     return;
   }
 
   const currentExpandedId = expandedRowId;
+  let reopenTr = null;
   tableBody.innerHTML = '';
 
   saved.forEach(item => {
@@ -1955,18 +2292,26 @@ function renderTable() {
       </td>
       <td class="numeric price-cell" data-id="${item.id}">${priceCellHTML(item.id, cur)}</td>
       <td class="numeric">${targetCellHTML(item)}</td>
-      <td class="numeric gain-cell ${gain == null ? 'gain-na' : gain >= 0 ? 'gain-pos' : 'gain-neg'}">${formatPct(gain)}</td>
+      <td class="numeric gain-cell ${gain == null ? 'gain-na' : gain >= 0 ? 'gain-pos' : 'gain-neg'}">${formatPctShort(gain)}</td>
       <td class="center signal-cell">${signalHtml}</td>
     `;
 
     tr.onclick = (e) => {
       if (e.target.classList.contains('target-input')) return;
+      // Tapping the target value starts inline target editing — don't also pop the sheet over it.
+      if (e.target.closest('.target-display')) return;
       handleRowExpansion(tr, item);
     };
 
     tableBody.appendChild(tr);
-    if (item.id === currentExpandedId) handleRowExpansion(tr, item);
+    if (item.id === currentExpandedId) reopenTr = tr;
   });
+
+  // Re-sync an open popup with the rebuilt rows (after all rows exist, so the "n/total" counter is right).
+  if (currentExpandedId) {
+    if (reopenTr) handleRowExpansion(reopenTr, portfolioMap[currentExpandedId], true);
+    else closeCoinPopup();
+  }
 }
 
 function updatePricesInTable() {
@@ -1984,7 +2329,7 @@ function updatePricesInTable() {
 
     const gainCell = row.querySelector('.gain-cell');
     if (gainCell) {
-      gainCell.textContent = formatPct(gain);
+      gainCell.textContent = formatPctShort(gain);
       gainCell.className = `numeric gain-cell ${gain == null ? 'gain-na' : gain >= 0 ? 'gain-pos' : 'gain-neg'}`;
       const oldGain = parseFloat(row.dataset.gain) || 0;
       const newGain = gain ?? 0;
@@ -2018,28 +2363,17 @@ function daysSince(dateStr) {
 }
 
 function handleRowExpansion(tr, item, forceReExpand = false) {
-  const collapsed = expandRowCore(tr, item, forceReExpand);
-  if (!forceReExpand && !collapsed) {
-    // A fixed delay (not rAF) so this survives the mobile browser's address-bar
-    // collapse on the very first scroll gesture of a page load — that collapse
-    // resizes the viewport mid-animation and can cancel a scroll timed too early
-    // via rAF, which is why this worked from the second click onward but not the first.
-    setTimeout(() => {
-      tr.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 150);
-  }
+  return expandRowCore(tr, item, forceReExpand);
 }
 
+// Builds the coin's detail markup (unchanged content and calculations) and shows it in the popup.
+// Returns true when the tap closed an already-open popup for the same coin, false otherwise.
 function expandRowCore(tr, item, forceReExpand) {
-  const existing = document.querySelector(`.detail-row[data-for="${item.id}"]`);
-  if (existing && !forceReExpand) { existing.remove(); expandedRowId = null; return true; }
-  if (!forceReExpand) document.querySelectorAll('.detail-row').forEach(r => r.remove());
-  else if (existing) existing.remove();
+  if (!forceReExpand && coinPopupOpen && expandedRowId === item.id) { closeCoinPopup(); return true; }
+  tableBody.querySelectorAll('tr.main-row.open').forEach(r => { if (r !== tr) r.classList.remove('open'); });
+  if (tr) tr.classList.add('open');
 
   const ta = holdingSignalCache[item.id];
-  const row = document.createElement('tr');
-  row.className = 'detail-row';
-  row.dataset.for = item.id;
 
   const removeBtnHtml = `<button type="button" class="detail-remove-btn" data-id="${item.id}" data-symbol="${item.symbol}">Remove ${item.symbol} from portfolio</button>`;
   const chartHtml = `<div class="chart-toggle-row">
@@ -2049,130 +2383,202 @@ function expandRowCore(tr, item, forceReExpand) {
     <div class="chart-container" id="chart-container-${item.id}"></div>`;
 
   if (!ta || ta.signal === 'NA') {
-    row.innerHTML = `<td colspan="5"><div class="detail-box">
+    presentCoinPopup(item, `<div class="detail-box">
       <div class="detail-reason">${ta ? ta.reason : 'No market data yet for this coin.'}</div>
       ${chartHtml}
       ${removeBtnHtml}
-    </div></td>`;
-    tr.after(row);
-    row.querySelector('.detail-remove-btn').onclick = () => removeCoin(item.id, item.symbol);
-    row.querySelector('.chart-toggle-btn').onclick = (e) => toggleChart(item.id, item.symbol, e.currentTarget);
-    expandedRowId = item.id;
+    </div>`, SIG_COLOR.na);
     return false;
   }
 
-  const ath = ta.isLiveAth ? 0 : daysSince(ta.athDate);
-  const atl = ta.isLiveAtl ? 0 : daysSince(ta.atlDate);
-  const pctAboveAtl = (ta.cmp != null && ta.atlValue != null && ta.atlValue !== 0) ? ((ta.cmp - ta.atlValue) / ta.atlValue * 100) : null;
-  const precision = pricePrecisionFor(ta.cmp);
-  // Today's UTC candle range. The live price is a real observed price, so it can only widen the
-  // range (a wick since the last OHLC fetch is the one thing this can't see — hence the 'as of').
-  const dayC = getDayCandle(item.id);
-  const todayChg = getTodayChangePct(item.id);
-  const hasRange = dayC && dayC.low != null && dayC.high != null;
-  const barLow = hasRange ? (ta.cmp != null ? Math.min(dayC.low, ta.cmp) : dayC.low) : null;
-  const barHigh = hasRange ? (ta.cmp != null ? Math.max(dayC.high, ta.cmp) : dayC.high) : null;
-  const barPct = (barLow != null && barHigh != null && ta.cmp != null && barHigh !== barLow)
-    ? Math.max(0, Math.min(100, (ta.cmp - barLow) / (barHigh - barLow) * 100))
-    : 50;
-  const atlIsCheap = pctAboveAtl != null && pctAboveAtl <= ATL_PROXIMITY_PCT;
-  const lowIsNear = (ta.effectiveLow != null && ta.cmp != null) && ((ta.cmp - ta.effectiveLow) / ta.effectiveLow * 100) <= (ta.nearLowThresholdPct ?? DCA_DIP_NEAR_PCT);
-  const highIsNear = (ta.effectiveHigh != null && ta.cmp != null) && ((ta.effectiveHigh - ta.cmp) / ta.effectiveHigh * 100) <= (ta.nearLowThresholdPct ?? DCA_DIP_NEAR_PCT);
+  const cmp = ta.cmp;
+  const precision = pricePrecisionFor(cmp);
+  const fmt = (n) => (n == null || isNaN(n)) ? '—' : formatINR(n, precision);
+  const sgn = (n, d = 1) => (n == null || isNaN(n)) ? '—' : (n >= 0 ? '+' : '−') + Math.abs(n).toFixed(d) + '%';
+  const taC = taCache[item.id] || {};
+  const vc = SIG_COLOR[ta.colorKey] || SIG_COLOR.hold;
+  const label = SIGNAL_LABELS_SHORT[ta.signal] || ta.signal;
+  const wd = ta.rollingLowWindowDays || DCA_DIP_WINDOW_DAYS;
+  const tgt = (item.target != null && !isNaN(Number(item.target))) ? Number(item.target) : null;
+
+  // ---- values the signal gates are built from ----
+  const nearThr = ta.nearLowThresholdPct ?? DCA_DIP_NEAR_PCT;
+  const osThr = ta.rsiOversoldThreshold ?? RSI_OVERSOLD;
+  const obThr = ta.rsiOverboughtThreshold ?? RSI_OVERBOUGHT;
+  const aboveLow = (ta.effectiveLow != null && cmp != null) ? (cmp - ta.effectiveLow) / ta.effectiveLow * 100 : null;
+  const belowHigh = (ta.effectiveHigh != null && cmp != null) ? (ta.effectiveHigh - cmp) / ta.effectiveHigh * 100 : null;
+  const closedRsi = taC.rsi ?? null;
   const lastLog = dcaLogCache[item.id] ?? null;
-  const showLogAction = ta.signal === 'ACCUMULATE';
-  const dcaLogHtml = (!showLogAction && !lastLog) ? '' : `
-    <div class="dca-log-row">
-      <span class="dca-log-status">${lastLog ? `Last logged DCA: ${formatINR(lastLog.price, pricePrecisionFor(lastLog.price))} on ${lastLog.dateStr}` : 'No DCA logged yet for this dip.'}</span>
-      <div class="dca-log-actions">
-        ${lastLog ? `<button type="button" class="dca-log-clear-btn" data-id="${item.id}" data-symbol="${item.symbol}">Clear</button>` : ''}
-        ${showLogAction ? `<button type="button" class="dca-log-btn" data-id="${item.id}" data-symbol="${item.symbol}">${lastLog ? 'Update' : 'Log'} DCA</button>` : ''}
+  const dynGap = Math.max(DCA_GAP_FLOOR_PCT, Math.min(DCA_GAP_CEIL_PCT, (taC.avgDailyMove ?? DCA_GAP_FLOOR_PCT) * DCA_GAP_MULT));
+  const gapPct = (lastLog && cmp != null) ? (lastLog.price - cmp) / lastLog.price * 100 : null;
+  const gapOk = !lastLog || (gapPct != null && gapPct >= dynGap);
+  const nearTarget = tgt != null && cmp != null ? cmp >= tgt * (1 - TARGET_PROXIMITY_PCT / 100) : false;
+  const volOk = ta.volume != null && ta.mcap != null && ta.mcap > 0 && ta.volume > 0 && ta.volMcapRatio != null
+    && ta.volMcapRatio >= LIQUIDITY_DEAD_RATIO && !(ta.mcap < MICROCAP_FLOOR && ta.volume < ABSOLUTE_DEAD_VOLUME);
+  const microOk = !(ta.mcap != null && ta.mcap < MICROCAP_FLOOR && (ta.rank == null || ta.rank > RANK_CAUTION));
+  const athWatch = ta.athTiers?.watch ?? DCA_WATCH_PCT;
+  const athModerate = ta.athTiers?.moderate ?? DCA_MODERATE_PCT;
+  const buyZone = ta.yearTiers?.moderate ?? DCA_YEAR_MODERATE_PCT;
+  const lowLvl = ta.effectiveLow != null ? ta.effectiveLow * (1 + nearThr / 100) : null;   // highest price still 'close to the low'
+  const highLvl = ta.effectiveHigh != null ? ta.effectiveHigh * (1 - nearThr / 100) : null; // lowest price still 'close to the high'
+  // % move from the current price needed to reach the rolling low / high (same idea as the target gate).
+  const toLowPct  = (ta.effectiveLow  != null && cmp != null && cmp > 0) ? (ta.effectiveLow  - cmp) / cmp * 100 : null;
+  const toHighPct = (ta.effectiveHigh != null && cmp != null && cmp > 0) ? (ta.effectiveHigh - cmp) / cmp * 100 : null;
+  // the unchanged pass/fail band (price within nearThr% of the extreme), restated on the same "from current price" basis
+  const lowReachBand  = lowLvl  != null ? (ta.effectiveLow  - lowLvl)  / lowLvl  * 100 : null;
+  const highReachBand = highLvl != null ? (ta.effectiveHigh - highLvl) / highLvl * 100 : null;
+  const negPct = (n) => `${n < 0 ? '−' : ''}${Math.abs(n).toFixed(0)}%`;
+
+  const gate = (st, l, v, req, sub) => `<div class="dx-gate"><span class="dx-ic ${st}">${st === 'ok' ? '✓' : st === 'no' ? '✕' : '–'}</span><span class="dx-l">${l}</span><span class="dx-v"><b class="${st === 'ok' ? 'buy' : st === 'no' ? 'sell' : 'na'}">${v}</b>${req ? ` <span class="dx-req">${req}</span>` : ''}${sub ? `<span class="dx-gs">${sub}</span>` : ''}</span></div>`;
+  const targetGate = () => tgt == null ? '' : gate(nearTarget ? 'ok' : 'no', `Your target ${fmt(tgt)}`, cmp == null ? '—' : sgn((tgt - cmp) / cmp * 100, 1), `/ ≤${TARGET_PROXIMITY_PCT}% away`, `needs ≥${fmt(tgt * (1 - TARGET_PROXIMITY_PCT / 100))}`);
+
+  let fam;
+  if (ta.signal === 'EXIT' || ta.signal === 'AT RISK') fam = 'safe';
+  else if (ta.signal === 'TRIM') fam = nearTarget ? 'target' : 'trimAth';
+  else if (ta.signal === 'SWING TRIM') fam = 'swing';
+  else if (ta.signal === 'ACCUMULATE') fam = 'add';
+  else if (ta.signal === 'HOLD') fam = 'hold';
+  else fam = (belowHigh != null && aboveLow != null && belowHigh < aboveLow) ? 'swing' : 'add';
+
+  let head = '', gates = '';
+  if (fam === 'safe') {
+    head = 'Is it safe to hold?';
+    gates = gate(volOk ? 'ok' : 'no', 'Real trading volume', ta.volMcapRatio == null ? 'no data' : (ta.volMcapRatio * 100).toFixed(2) + '%', `/ ≥${(LIQUIDITY_DEAD_RATIO * 100).toFixed(2)}%`)
+      + gate(microOk ? 'ok' : 'no', 'Not a micro-cap', ta.mcap == null ? '—' : formatINR(ta.mcap, 2, true), `/ ≥${formatINR(MICROCAP_FLOOR, 2, true)} or top ${RANK_CAUTION}`);
+  } else if (fam === 'target') {
+    head = 'Should I trim? (your target)';
+    gates = gate(nearTarget ? 'ok' : 'no', `Near your target ${fmt(tgt)}`, fmt(cmp), `/ ≥${fmt(tgt * (1 - TARGET_PROXIMITY_PCT / 100))}`);
+  } else if (fam === 'trimAth') {
+    head = 'Why trim?';
+    gates = gate('ok', 'Shallow discount vs ATH', ta.athPct == null ? '—' : ta.athPct.toFixed(1) + '%', `/ > ${athWatch}%`, ta.athValue == null ? '' : `ATH ${fmt(ta.athValue)} · above ${fmt(ta.athValue * (1 + athWatch / 100))}`) + targetGate();
+  } else if (fam === 'swing') {
+    head = 'Should I trim some? (range top)';
+    gates = gate(belowHigh != null && belowHigh <= nearThr ? 'ok' : 'no', `Close to ${wd}-day high`, sgn(toHighPct), highReachBand == null ? '' : `/ ≤${Math.abs(highReachBand).toFixed(1)}%`, `high ${fmt(ta.effectiveHigh)} · needs ≥${fmt(highLvl)}`)
+      + gate(ta.rsi != null && ta.rsi >= obThr ? 'ok' : 'no', 'Overbought now (RSI)', ta.rsi == null ? '—' : ta.rsi.toFixed(1), `/ ≥${obThr.toFixed(0)}`) + targetGate();
+  } else if (fam === 'hold') {
+    head = 'Why hold?';
+    gates = gate(ta.athPct != null && ta.athPct <= athModerate ? 'ok' : 'no', 'Meaningful discount vs ATH', ta.athPct == null ? '—' : ta.athPct.toFixed(1) + '%', `/ ≤${athModerate}%`, ta.athValue == null ? '' : `ATH ${fmt(ta.athValue)} · needs ≤${fmt(ta.athValue * (1 + athModerate / 100))}`)
+      + gate(ta.drawdown365 != null && ta.drawdown365 <= buyZone ? 'ok' : 'no', `Real pullback from ${YEAR_HIGH_DAYS}-day high`, ta.drawdown365 == null ? '—' : ta.drawdown365.toFixed(1) + '%', `/ ≤${negPct(buyZone)}`, ta.high365 == null ? '' : `high ${fmt(ta.high365)} · needs ≤${fmt(ta.high365 * (1 + buyZone / 100))}`);
+  } else {
+    head = 'Should I add?';
+    gates = gate(aboveLow != null && aboveLow <= nearThr ? 'ok' : 'no', `Close to ${wd}-day low`, sgn(toLowPct), lowReachBand == null ? '' : `/ ≥${sgn(lowReachBand)}`, `low ${fmt(ta.effectiveLow)} · needs ≤${fmt(lowLvl)}`)
+      + gate(ta.rsi != null && ta.rsi <= osThr ? 'ok' : 'no', 'Oversold now (RSI)', ta.rsi == null ? '—' : ta.rsi.toFixed(1), `/ ≤${osThr.toFixed(0)}`)
+      + gate(closedRsi == null ? 'na' : closedRsi <= osThr ? 'ok' : 'no', 'Oversold at last close', closedRsi == null ? '—' : closedRsi.toFixed(1), `/ ≤${osThr.toFixed(0)}`)
+      + gate(gapOk ? 'ok' : 'no', 'Below last DCA price', !lastLog ? 'no DCA logged' : (gapPct >= 0 ? gapPct.toFixed(1) + '%' : Math.abs(gapPct).toFixed(1) + '% above'), lastLog ? `/ ≥${dynGap.toFixed(1)}% below` : '', lastLog ? `last DCA ${fmt(lastLog.price)} · needs ≤${fmt(lastLog.price * (1 - dynGap / 100))}` : '');
+  }
+  const chk = (l, v) => `${l} <b class="${v == null ? 'muted' : v ? 'buy' : 'sell'}">${v == null ? '—' : v ? '✓' : '✕'}</b>`;
+  const others = `Other checks: ${chk('Safe', volOk && microOk)} · ${chk('Target hit', tgt == null ? null : nearTarget)} · ${chk('Add', ta.signal === 'ACCUMULATE')} · ${chk('Swing trim', ta.signal === 'SWING TRIM')}`;
+
+  // ---- price-position sliders ----
+  const dayC = getDayCandle(item.id);
+  const rawCandle = dayCandleCache[item.id];
+  const nowMs = Date.now(), dayStart = utcMidnightOf(nowMs);
+  const candleMsg = (rawCandle && rawCandle.invalid && rawCandle.dayKey === utcDayKey(nowMs))
+    ? 'Today\'s candle rejected — CoinGecko\'s first candle doesn\'t start at 00:00 UTC'
+    : (nowMs - dayStart < 60 * 60000)
+      ? `New UTC day — first candle closes ${new Date(dayStart + CANDLE_MS).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} local`
+      : 'Today\'s candle unavailable — waiting on CoinGecko OHLC';
+  const hasRange = dayC && dayC.low != null && dayC.high != null;
+  // The live price is a real observed price, so it can only widen the candle range (a wick since the
+  // last OHLC fetch is the one thing this can't see — hence the 'as of' time).
+  const barLow = hasRange ? (cmp != null ? Math.min(dayC.low, cmp) : dayC.low) : null;
+  const barHigh = hasRange ? (cmp != null ? Math.max(dayC.high, cmp) : dayC.high) : null;
+
+  const rng = (name, lo, hi, o) => {
+    if (lo == null || hi == null || cmp == null || !(hi > lo) || (o.log && !(lo > 0))) {
+      return `<div class="dx-rng"><b>${name}</b><span style="grid-column:2/-1">—</span></div>`;
+    }
+    let z = o.log ? (Math.log(cmp) - Math.log(lo)) / (Math.log(hi) - Math.log(lo)) : (cmp - lo) / (hi - lo);
+    z = Math.max(0, Math.min(1, z)) * 100;
+    const op = o.open != null ? Math.max(0, Math.min(100, (o.open - lo) / (hi - lo) * 100)) : null;
+    return `<div class="dx-rng"><b>${name}</b><span>${fmt(lo)}</span><div class="dx-bar">${op != null ? `<span class="o" style="left:${op}%"></span>` : ''}<span class="m" style="left:${z}%"></span></div><span>${fmt(hi)}</span></div>
+      <div class="dx-met"><div>${o.l}</div><div>${o.r}</div></div>${o.extra ? `<div class="dx-sub">${o.extra}</div>` : ''}`;
+  };
+  const dTxt = (live, approx, d) => live ? 'today⚡' : (d == null ? '—' : (approx ? '~' : '') + d + 'd');
+  const D = '<i class="dt">·</i>';
+  const rsiTxt = (v, approx) => v == null ? '' : `${D}RSI ${approx ? '~' : ''}${v.toFixed(1)}`;
+
+  const todayHtml = hasRange
+    ? rng('Today', barLow, barHigh, {
+        open: dayC.open,
+        l: `<b>${sgn((cmp - barLow) / barLow * 100)}</b>${D}open ${fmt(dayC.open)}`,
+        r: `<b>${sgn(-(barHigh - cmp) / barHigh * 100)}</b>${D}${new Date(dayC.fetchedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+      })
+    : `<div class="dx-rng"><b>Today</b><span style="grid-column:2/-1;font-family:var(--font-ui)">${dayC ? 'Range unavailable — CoinGecko is missing a candle' : candleMsg}</span></div>`;
+  const d90Html = rng(`${wd} days${ta.rollingExtremesSource === 'closes' ? ' ≈' : ''}`, ta.effectiveLow, ta.effectiveHigh, {
+    l: `<b>${sgn(aboveLow)}</b>${D}${dTxt(ta.isLiveLow, ta.lowDaysAgoApprox, ta.effectiveLowDaysAgo)}${rsiTxt(ta.lowRsi, ta.lowDaysAgoApprox)}`,
+    r: `<b>${sgn(belowHigh == null ? null : -belowHigh)}</b>${D}${dTxt(ta.isLiveHigh, ta.highDaysAgoApprox, ta.effectiveHighDaysAgo)}${rsiTxt(ta.highRsi, ta.highDaysAgoApprox)}`
+  });
+  const yrHtml = rng(YEAR_HIGH_DAYS === 365 ? '1 year' : `${YEAR_HIGH_DAYS} days`, ta.low365, ta.high365, {
+    l: `<b>${sgn(ta.above365Low)}</b>${D}${ta.low365DaysAgo === 0 ? 'today' : (ta.low365Approx ? '~' : '') + (ta.low365DaysAgo ?? '—') + 'd'}`,
+    r: `<b>${sgn(ta.drawdown365)}</b>${D}${ta.high365DaysAgo === 0 ? 'today' : (ta.high365Approx ? '~' : '') + (ta.high365DaysAgo ?? '—') + 'd'}`
+  });
+  const athDays = ta.isLiveAth ? 0 : daysSince(ta.athDate);
+  const atlDays = ta.isLiveAtl ? 0 : daysSince(ta.atlDate);
+  const pctAboveAtl = (cmp != null && ta.atlValue != null && ta.atlValue !== 0) ? ((cmp - ta.atlValue) / ta.atlValue * 100) : null;
+  const allHtml = rng('All time', ta.atlValue, ta.athValue, {
+    log: true,
+    l: `<b>${sgn(pctAboveAtl)}</b>${D}${ta.isLiveAtl ? 'today⚡' : (atlDays == null ? '—' : atlDays + 'd')}`,
+    r: `<b>${sgn(ta.athPct)}</b>${D}${ta.isLiveAth ? 'today⚡' : (athDays == null ? '—' : athDays + 'd')}`
+  });
+  // Rolling 24h range (CoinGecko). The live price can only widen it (it is a real observed price).
+  const rollChg = getRollingChangePct(item.id);
+  const h24Lo = ta.low24h != null ? (cmp != null ? Math.min(ta.low24h, cmp) : ta.low24h) : null;
+  const h24Hi = ta.high24h != null ? (cmp != null ? Math.max(ta.high24h, cmp) : ta.high24h) : null;
+  const h24Html = rng('24h', h24Lo, h24Hi, {
+    l: `<b>${sgn(h24Lo != null && cmp != null ? (cmp - h24Lo) / h24Lo * 100 : null)}</b>${D}rolling`,
+    r: `<b>${sgn(h24Hi != null && cmp != null ? -(h24Hi - cmp) / h24Hi * 100 : null)}</b>${D}move <b class="${rollChg == null ? '' : rollChg >= 0 ? 'buy' : 'sell'}">${sgn(rollChg)}</b>`
+  });
+
+  // ---- momentum + liquidity ----
+  const cell = (k, v, cls = '', sub = '') => `<div class="dx-cell"><div class="k">${k}</div><div class="n ${cls}">${v}</div>${sub ? `<div class="s">${sub}</div>` : ''}</div>`;
+  const rs = ta.relStrengthVsBtc;
+  const emaGap = (ta.emaLong != null && cmp != null) ? (ta.emaLong - cmp) / cmp * 100 : null;
+  const momentum = [
+    cell('7 days', sgn(ta.change7d), ta.change7d != null && ta.change7d <= CRASH_7D_PCT ? 'sell' : ta.change7d > 0 ? 'buy' : ''),
+    cell('30 days', sgn(ta.change30d), ta.change30d > 0 ? 'buy' : ta.change30d < 0 ? 'sell' : ''),
+    cell('RSI (14, live)', ta.rsi == null ? '—' : ta.rsi.toFixed(1), ta.rsi != null && ta.rsi <= osThr ? 'buy' : ta.rsi != null && ta.rsi >= obThr ? 'sell' : 'rsi'),
+    cell('To EMA 200', sgn(emaGap), 'tgt', fmt(ta.emaLong)),
+    cell('Trend', ta.sentiment == null ? '—' : ta.sentiment, ta.sentiment === 'Bullish' ? 'buy' : ta.sentiment === 'Bearish' ? 'sell' : '', '20/50 EMA, live'),
+    cell(`vs BTC, ${REL_STRENGTH_WINDOW_DAYS}d`, rs == null ? '—' : `${rs >= 0 ? '+' : '−'}${Math.abs(rs).toFixed(1)}pp`, rs > 0 ? 'buy' : rs < 0 ? 'sell' : '', rs == null ? '' : rs > 0 ? 'outperforming' : 'underperforming')
+  ].join('');
+  const val = (n, f2) => n == null ? '—' : f2(n);
+  const liquidity = `<div class="dx-liq"><span>24h vol <b>${val(ta.volume, v => formatINR(v, 2, true))}</b></span><span>MCap <b>${val(ta.mcap, v => formatINR(v, 2, true))}</b></span><span>Vol/MCap <b>${val(ta.volMcapRatio, v => (v * 100).toFixed(3) + '%')}</b></span><span>Rank <b>${val(ta.rank, v => '#' + v)}</b></span></div>`;
+
+  // Logging is always available (not only while the signal reads ACCUMULATE) so a missed or
+  // back-dated DCA can still be recorded; the newest-dated entry anchors the next-add gap check.
+  const dcaHist = dcaHistoryOf(item.id);
+  const dcaHistRows = dcaHist.slice(0, 5).map(h => `<div class="dca-hist-row"><span class="d">${h.dateStr || '—'}</span><b>${formatINR(h.price, pricePrecisionFor(h.price))}</b><button type="button" class="dca-del-btn" data-id="${item.id}" data-symbol="${item.symbol}" data-ts="${h.timestamp}" aria-label="Delete this DCA entry">✕</button></div>`).join('');
+  const dcaLogHtml = `
+    <div class="dca-block">
+      <div class="dca-log-row">
+        <span class="dca-log-status">${lastLog ? `Last logged DCA: ${formatINR(lastLog.price, pricePrecisionFor(lastLog.price))} on ${lastLog.dateStr}` : 'No DCA logged yet.'}</span>
+        <div class="dca-log-actions">
+          ${lastLog ? `<button type="button" class="dca-log-clear-btn" data-id="${item.id}" data-symbol="${item.symbol}">Clear</button>` : ''}
+          <button type="button" class="dca-log-btn" data-id="${item.id}" data-symbol="${item.symbol}">Log DCA</button>
+        </div>
       </div>
+      ${dcaHist.length > 1 ? `<div class="dca-hist">${dcaHistRows}</div><div class="dca-hist-note">${dcaHist.length > 5 ? `Showing newest 5 of ${dcaHist.length}. ` : ''}The newest-dated entry is used for the next-add gap check.</div>` : ''}
     </div>`;
-  row.innerHTML = `
-    <td colspan="5"><div class="detail-box">
-      <div class="detail-group-title">Price Action</div>
-      <div class="price-bar-wrap">
-        <div class="price-bar-header">
-          <span class="price-bar-cmp">${ta.cmp == null ? '—' : formatINR(ta.cmp, precision)}</span>
-          <span class="price-bar-change ${todayChg == null ? '' : todayChg >= 0 ? 'buy' : 'sell'}">${todayChg == null ? '—' : (todayChg >= 0 ? '+' : '') + todayChg.toFixed(2) + '% (today)'}</span>
-        </div>
-        ${(barLow == null || barHigh == null) ? `<div class="price-bar-labels"><span>${dayC ? 'Today\'s range unavailable — CoinGecko is missing a candle' : 'Today\'s candle unavailable — waiting on CoinGecko OHLC'}</span></div>` : `
-        <div class="price-bar-track"><div class="price-bar-marker" style="left:${barPct}%"></div></div>
-        <div class="price-bar-labels"><span>L ${formatINR(barLow, precision)}</span><span>O ${formatINR(dayC.open, precision)}</span><span>H ${formatINR(barHigh, precision)}</span></div>
-        <div class="price-bar-labels"><span>Today, UTC day · as of ${new Date(dayC.fetchedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span></div>
-        `}
-      </div>
-      <div class="detail-grid">
-        <div class="detail-item"><div class="label">7-Day Change</div><div class="value ${ta.change7d != null && ta.change7d <= CRASH_7D_PCT ? 'sell' : ta.change7d != null && ta.change7d > 0 ? 'buy' : ''}">${ta.change7d == null ? '—' : (ta.change7d >= 0 ? '+' : '') + ta.change7d.toFixed(1) + '%'}</div></div>
-        <div class="detail-item"><div class="label">30-Day Change</div><div class="value">${ta.change30d == null ? '—' : (ta.change30d >= 0 ? '+' : '') + ta.change30d.toFixed(1) + '%'}</div></div>
-        <div class="detail-item">
-          <div class="label">All-Time High${ta.isLiveAth ? ' <span>⚡</span>' : ''}</div>
-          <div class="value ${ta.athPct != null && ta.athPct <= (ta.athTiers?.moderate ?? DCA_MODERATE_PCT) ? 'buy' : ta.athPct != null && ta.athPct > (ta.athTiers?.watch ?? DCA_WATCH_PCT) ? 'sell' : ''}">${ta.athValue == null ? '—' : formatINR(ta.athValue, precision)}</div>
-          <div class="sub-value ${ta.athPct != null && ta.athPct <= (ta.athTiers?.moderate ?? DCA_MODERATE_PCT) ? 'buy' : ta.athPct != null && ta.athPct > (ta.athTiers?.watch ?? DCA_WATCH_PCT) ? 'sell' : ''}">${ta.athPct == null ? '—' : ta.athPct.toFixed(1) + '%'}, ${ta.isLiveAth ? 'today' : (ath == null ? '—' : ath + 'd ago')}</div>
-        </div>
-        <div class="detail-item">
-          <div class="label">All-Time Low${ta.isLiveAtl ? ' <span>⚡</span>' : ''}</div>
-          <div class="value ${atlIsCheap ? 'buy' : ''}">${ta.atlValue == null ? '—' : formatINR(ta.atlValue, precision)}</div>
-          <div class="sub-value ${atlIsCheap ? 'buy' : ''}">${pctAboveAtl == null ? '—' : (pctAboveAtl >= 0 ? '+' : '') + pctAboveAtl.toFixed(1) + '%'}, ${ta.isLiveAtl ? 'today' : (atl == null ? '—' : atl + 'd ago')}</div>
-        </div>
-        <div class="detail-item">
-          <div class="label">${YEAR_HIGH_DAYS}-Day High</div>
-          <div class="value ${ta.drawdown365 != null && ta.drawdown365 <= (ta.yearTiers?.moderate ?? DCA_YEAR_MODERATE_PCT) ? 'buy' : ''}">${ta.high365 == null ? '—' : formatINR(ta.high365, precision)}</div>
-          <div class="sub-value ${ta.drawdown365 != null && ta.drawdown365 <= (ta.yearTiers?.moderate ?? DCA_YEAR_MODERATE_PCT) ? 'buy' : ''}">${ta.drawdown365 == null ? '—' : ta.drawdown365.toFixed(1) + '% below, ' + (ta.high365DaysAgo === 0 ? 'today' : (ta.high365Approx ? '~' : '') + ta.high365DaysAgo + 'd ago')}</div>
-          <div class="sub-value" title="Buy zone: price must be at least this far below the ${YEAR_HIGH_DAYS}d high (scaled to this coin's volatility)">Buy zone: ≤${(ta.yearTiers?.moderate ?? DCA_YEAR_MODERATE_PCT).toFixed(0)}%</div>
-        </div>
-        <div class="detail-item">
-          <div class="label">${YEAR_HIGH_DAYS}-Day Low</div>
-          <div class="value">${ta.low365 == null ? '—' : formatINR(ta.low365, precision)}</div>
-          <div class="sub-value">${ta.above365Low == null ? '—' : '+' + ta.above365Low.toFixed(1) + '% above, ' + (ta.low365DaysAgo === 0 ? 'today' : (ta.low365Approx ? '~' : '') + ta.low365DaysAgo + 'd ago')}</div>
-          <div class="sub-value" title="Where price sits inside its ${YEAR_HIGH_DAYS}d range: 0% = at the low, 100% = at the high">Range position: ${ta.range365Pos == null ? '—' : ta.range365Pos.toFixed(0) + '%'}</div>
-        </div>
-        <div class="detail-item signal-input">
-          <div class="label">${ta.rollingLowWindowDays || DCA_DIP_WINDOW_DAYS}-Day High${ta.isLiveHigh ? ' <span>⚡</span>' : ''}${ta.rollingExtremesSource === 'closes' ? ' <span title="Exchange wick data unavailable — approximated from daily closes">≈</span>' : ''}</div>
-          <div class="value ${highIsNear ? 'swing' : ''}">${ta.effectiveHigh == null ? '—' : formatINR(ta.effectiveHigh, precision)}</div>
-          <div class="sub-value ${highIsNear ? 'swing' : ''}">${(ta.effectiveHigh == null || ta.cmp == null) ? '—' : (((ta.cmp - ta.effectiveHigh) / ta.effectiveHigh * 100) >= 0 ? '+' : '') + ((ta.cmp - ta.effectiveHigh) / ta.effectiveHigh * 100).toFixed(1) + '% ' + (((ta.cmp - ta.effectiveHigh) / ta.effectiveHigh * 100) >= 0 ? 'above' : 'below') + ', ' + (ta.isLiveHigh ? 'today' : (ta.effectiveHighDaysAgo == null ? '—' : (ta.highDaysAgoApprox ? '~' : '') + ta.effectiveHighDaysAgo + 'd ago'))}</div>
-          <div class="sub-value" title="RSI (14) on the day the high was set${ta.highDaysAgoApprox ? ' — approximate, day estimated within a 4-day candle' : ''}">RSI at high: ${ta.highRsi == null ? '—' : (ta.highDaysAgoApprox ? '~' : '') + ta.highRsi.toFixed(2)}</div>
-        </div>
-        <div class="detail-item signal-input">
-          <div class="label">${ta.rollingLowWindowDays || DCA_DIP_WINDOW_DAYS}-Day Low${ta.isLiveLow ? ' <span>⚡</span>' : ''}${ta.rollingExtremesSource === 'closes' ? ' <span title="Exchange wick data unavailable — approximated from daily closes">≈</span>' : ''}</div>
-          <div class="value ${lowIsNear ? 'buy' : ''}">${ta.effectiveLow == null ? '—' : formatINR(ta.effectiveLow, precision)}</div>
-          <div class="sub-value ${lowIsNear ? 'buy' : ''}">${(ta.effectiveLow == null || ta.cmp == null) ? '—' : (((ta.cmp - ta.effectiveLow) / ta.effectiveLow * 100) >= 0 ? '+' : '') + ((ta.cmp - ta.effectiveLow) / ta.effectiveLow * 100).toFixed(1) + '% ' + (((ta.cmp - ta.effectiveLow) / ta.effectiveLow * 100) >= 0 ? 'above' : 'below') + ', ' + (ta.isLiveLow ? 'today' : (ta.effectiveLowDaysAgo == null ? '—' : (ta.lowDaysAgoApprox ? '~' : '') + ta.effectiveLowDaysAgo + 'd ago'))}</div>
-          <div class="sub-value" title="RSI (14) on the day the low was set${ta.lowDaysAgoApprox ? ' — approximate, day estimated within a 4-day candle' : ''}">RSI at low: ${ta.lowRsi == null ? '—' : (ta.lowDaysAgoApprox ? '~' : '') + ta.lowRsi.toFixed(2)}</div>
-        </div>
-        <div class="detail-item detail-item-span2" title="Last daily close used for RSI, EMA and the 90d/365d windows"><div class="label">Daily data through</div><div class="value" style="font-size:11px">${ta.closesEndTs == null ? '—' : new Date(ta.closesEndTs).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} · extremes: ${ta.rollingExtremesSource ?? '—'}</div></div>
-      </div>
+  const dataThrough = ta.closesEndTs == null ? '—' : new Date(ta.closesEndTs).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+  const actsHtml = `<div class="dx-acts">
+      <button type="button" class="chart-toggle-btn" data-id="${item.id}" data-symbol="${item.symbol}">📈 View chart</button>
+      <a class="chart-external-link" href="https://www.tradingview.com/chart/?symbol=BINANCE%3A${item.symbol}USDT*FX_IDC%3AUSDINR" target="_blank" rel="noopener">TradingView ↗</a>
+      <button type="button" class="detail-remove-btn" data-id="${item.id}" data-symbol="${item.symbol}" aria-label="Remove ${item.symbol} from portfolio">Remove</button>
+    </div>
+    <div class="chart-container" id="chart-container-${item.id}"></div>`;
 
-      <div class="detail-group-title">Liquidity</div>
-      <div class="detail-grid">
-        <div class="detail-item"><div class="label">24h Volume</div><div class="value">${ta.volume == null ? '—' : formatINR(ta.volume, 2, true)}</div></div>
-        <div class="detail-item"><div class="label">Market Cap</div><div class="value">${ta.mcap == null ? '—' : formatINR(ta.mcap, 2, true)}</div></div>
-        <div class="detail-item"><div class="label">Vol / MCap</div><div class="value">${ta.volMcapRatio == null ? '—' : (ta.volMcapRatio * 100).toFixed(3) + '%'}</div></div>
-        <div class="detail-item"><div class="label">MCap Rank</div><div class="value">${ta.rank == null ? '—' : '#' + ta.rank}</div></div>
-      </div>
-
-      <div class="detail-group-title">Technical Confirmation</div>
-      <div class="detail-grid detail-grid-headline">
-        <div class="detail-item detail-item-span2"><div class="label">Conviction</div><div class="value">${ta.strength}%</div></div>
-      </div>
-      <div class="detail-grid">
-        <div class="detail-item signal-input"><div class="label">RSI (14, live)</div><div class="value ${ta.rsi != null && ta.rsi <= (ta.rsiOversoldThreshold ?? RSI_OVERSOLD) ? 'buy' : ta.rsi != null && ta.rsi >= (ta.rsiOverboughtThreshold ?? RSI_OVERBOUGHT) ? 'sell' : 'rsi-value'}">${ta.rsi == null ? '—' : ta.rsi.toFixed(2)}</div><div class="sub-value">≤${(ta.rsiOversoldThreshold ?? RSI_OVERSOLD).toFixed(0)} oversold · ≥${(ta.rsiOverboughtThreshold ?? RSI_OVERBOUGHT).toFixed(0)} overbought</div></div>
-        <div class="detail-item"><div class="label">CMP → EMA 200 (live)</div><div class="value target-pct">${(ta.emaLong == null || ta.cmp == null) ? '—' : (((ta.emaLong - ta.cmp) / ta.cmp * 100) >= 0 ? '+' : '') + ((ta.emaLong - ta.cmp) / ta.cmp * 100).toFixed(1) + '% (' + formatINR(ta.emaLong, precision) + ')'}</div></div>
-        <div class="detail-item"><div class="label">Sentiment (20/50 EMA, live)</div><div class="value ${ta.sentiment === 'Bullish' ? 'buy' : ta.sentiment === 'Bearish' ? 'sell' : ''}">${ta.sentiment == null ? '—' : ta.sentiment}</div></div>
-        <div class="detail-item"><div class="label">Rel. Strength (${REL_STRENGTH_WINDOW_DAYS}d vs BTC)</div><div class="value ${ta.relStrengthVsBtc > 0 ? 'buy' : ta.relStrengthVsBtc < 0 ? 'sell' : ''}">${ta.relStrengthVsBtc == null ? '—' : (ta.relStrengthVsBtc >= 0 ? '+' : '') + ta.relStrengthVsBtc.toFixed(1) + 'pp (' + (ta.relStrengthVsBtc > 0 ? 'Outperforming' : 'Underperforming') + ')'}</div></div>
-      </div>
-      ${ta.taStale ? '<div class="detail-reason" style="color:var(--muted-2)">TA history for this coin hasn\'t loaded yet.</div>' : ''}
-      <div class="detail-reason"><b>Why:</b> ${ta.reason}</div>
+  presentCoinPopup(item, `<div class="detail-box"><div class="dx">
+      <div class="dx-verdict" style="--vc:${vc}"><span class="dx-vp">${label} ${ta.strength}%${ta.signal === 'ACCUMULATE' && ta.dcaStreakDay ? ` · D${ta.dcaStreakDay}` : ''}</span><p>${ta.reason}</p></div>
+      <div><h3>${head}</h3>${gates}<div class="dx-oth">${others}</div></div>
+      <div>${todayHtml}${h24Html}${d90Html}${yrHtml}${allHtml}</div>
+      <div class="dx-grid">${momentum}</div>
+      ${liquidity}
+      ${ta.taStale ? '<div class="dx-hint">TA history for this coin hasn\'t loaded yet.</div>' : ''}
       ${dcaLogHtml}
-      ${chartHtml}
-      ${removeBtnHtml}
-    </div></td>
-  `;
-  tr.after(row);
-  row.querySelector('.detail-remove-btn').onclick = () => removeCoin(item.id, item.symbol);
-  row.querySelector('.chart-toggle-btn').onclick = (e) => toggleChart(item.id, item.symbol, e.currentTarget);
-  row.querySelector('.dca-log-btn')?.addEventListener('click', () => logDcaLevel(item.id, item.symbol));
-  row.querySelector('.dca-log-clear-btn')?.addEventListener('click', () => clearDcaLevel(item.id, item.symbol));
-  expandedRowId = item.id;
+      <div class="dx-hint" style="margin:0" title="Last daily close used for RSI, EMA and the ${wd}d/${YEAR_HIGH_DAYS}d windows">Daily data through ${dataThrough} · extremes: ${ta.rollingExtremesSource ?? '—'}</div>
+      ${actsHtml}
+    </div></div>`, vc);
   return false;
 }
 
@@ -2192,10 +2598,10 @@ function applyCurrentSort() {
       valA = pctA == null ? -999999 : pctA;
       valB = pctB == null ? -999999 : pctB;
     } else if (currentSortColumn === 'change24h') {
-      const chgA = getTodayChangePct(a.id);
-      const chgB = getTodayChangePct(b.id);
-      valA = chgA == null ? -999999 : chgA;
-      valB = chgB == null ? -999999 : chgB;
+      const chgA = getDisplayChange(a.id);
+      const chgB = getDisplayChange(b.id);
+      valA = chgA == null ? -999999 : chgA.pct;
+      valB = chgB == null ? -999999 : chgB.pct;
     } else {
       valA = holdingSignalCache[a.id]?.strength || 0;
       valB = holdingSignalCache[b.id]?.strength || 0;
@@ -2296,7 +2702,7 @@ async function discoverCandidates() {
           const liveRsiSeries = calcRSISeries(closes.concat([cur]), RSI_PERIOD);
           const liveRsi = liveRsiSeries.length ? liveRsiSeries[liveRsiSeries.length - 1] : null;
           const rsiThreshold = ta.rsiOversoldThreshold ?? RSI_OVERSOLD;
-          const rsiOversold = liveRsi != null && liveRsi <= rsiThreshold;
+          const rsiOversold = liveRsi != null && liveRsi <= rsiThreshold && ta.rsi != null && ta.rsi <= rsiThreshold;
           const yr = yearHighDrawdown(closes, cur);
           const yearOk = yr == null || yr.pct <= (ta.yearTiers?.moderate ?? DCA_YEAR_MODERATE_PCT);
           if (nearLow && rsiOversold && yearOk) {
@@ -2350,21 +2756,21 @@ discoverBtn.onclick = discoverCandidates;
 gainHeader.addEventListener('click', () => {
   sortDir = currentSortColumn === 'gain' ? (sortDir === 'desc' ? 'asc' : 'desc') : 'desc';
   currentSortColumn = 'gain';
-  expandedRowId = null; // re-sorting moves rows around, so keeping one open mid-move felt disorienting
+  closeCoinPopup(); // re-sorting moves rows around, so keeping one open mid-move felt disorienting
   applyCurrentSort();
 });
 
 priceHeader.addEventListener('click', () => {
   sortDir = currentSortColumn === 'change24h' ? (sortDir === 'desc' ? 'asc' : 'desc') : 'desc';
   currentSortColumn = 'change24h';
-  expandedRowId = null;
+  closeCoinPopup();
   applyCurrentSort();
 });
 
 signalHeader.addEventListener('click', () => {
   sortDir = currentSortColumn === 'signal' ? (sortDir === 'desc' ? 'asc' : 'desc') : 'desc';
   currentSortColumn = 'signal';
-  expandedRowId = null;
+  closeCoinPopup();
   applyCurrentSort();
 });
 
