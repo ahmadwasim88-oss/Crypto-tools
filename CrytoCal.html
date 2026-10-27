@@ -99,6 +99,29 @@
     .field select:focus {
       border-bottom-color: var(--accent);
     }
+
+    /* Comma-separated multi-entry fields */
+    .multi-total {
+      text-align: right;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+      margin: -2px 0 10px;
+      white-space: nowrap;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .multi-total::-webkit-scrollbar { display: none; }
+    .multi-total .mt-warn {
+      display: block;
+      color: var(--negative);
+      font-weight: 600;
+      white-space: normal;
+      font-size: 11px;
+    }
+    .field input.multi-entry.has-error {
+      border-bottom-color: var(--negative);
+    }
     .avg-display {
       font-size: 10px;
       font-weight: 600;
@@ -331,9 +354,10 @@
       <div class="avg-display" id="dcaTargetDisplay">Target Selling Price: ₹0.00</div>
       <div class="info-row">Low-Cost Holdings With Average Cost Below <span style="color:var(--highlight-red);font-weight:bold">₹0.00</span> <span style="color:var(--accent);font-size:10px">(Target Selling price after fees deducted.)</span></div>
       <div class="row">
-        <div class="col field"><label>Low-Cost Amount ₹</label><input type="number" id="dcaExtraInvested" min="0"></div>
-        <div class="col field"><label>Low-Cost Coins</label><input type="number" id="dcaExtraCoins" step="any" min="0"></div>
+        <div class="col field"><label>Low-Cost Amount ₹</label><input type="text" inputmode="decimal" autocomplete="off" class="multi-entry" id="dcaExtraInvested"></div>
+        <div class="col field"><label>Low-Cost Coins</label><input type="text" inputmode="decimal" autocomplete="off" class="multi-entry" id="dcaExtraCoins"></div>
       </div>
+<div class="multi-total" id="dcaExtraTotal" data-amount="dcaExtraInvested" data-coins="dcaExtraCoins"></div>
       <div id="dcaPlaceholder" class="placeholder">
         Please fill all required fields to see results
       </div>
@@ -371,9 +395,10 @@
         <span style="color:var(--accent);font-size:10px">(Selling price after fees deducted)</span>
       </div>
       <div class="row">
-        <div class="col field"><label>Low-Cost Amount ₹</label><input type="number" id="sellExtraInvested" min="0" placeholder="0"></div>
-        <div class="col field"><label>Low-Cost Coins</label><input type="number" id="sellExtraCoins" step="any" min="0" placeholder="0"></div>
+        <div class="col field"><label>Low-Cost Amount ₹</label><input type="text" inputmode="decimal" autocomplete="off" class="multi-entry" id="sellExtraInvested" placeholder="0"></div>
+        <div class="col field"><label>Low-Cost Coins</label><input type="text" inputmode="decimal" autocomplete="off" class="multi-entry" id="sellExtraCoins" placeholder="0"></div>
       </div>
+<div class="multi-total" id="sellExtraTotal" data-amount="sellExtraInvested" data-coins="sellExtraCoins"></div>
       <div id="sellIterativeMessage" style="display:none; margin:16px 0;">
         <div class="info-row" style="background:rgba(0,122,255,0.08); padding:12px; border-radius:8px; margin-bottom:12px;">
           <strong>Target selling price changed due to Low-Cost holdings entered.</strong><br>
@@ -419,9 +444,10 @@
         <span style="color:var(--accent);font-size:10px">(Target selling price after fees deducted)</span>
       </div>
       <div class="row">
-        <div class="col field"><label>Low-Cost Amount ₹</label><input type="number" id="plannedExtraInvested" min="0"></div>
-        <div class="col field"><label>Low-Cost Coins</label><input type="number" id="plannedExtraCoins" step="any" min="0"></div>
+        <div class="col field"><label>Low-Cost Amount ₹</label><input type="text" inputmode="decimal" autocomplete="off" class="multi-entry" id="plannedExtraInvested"></div>
+        <div class="col field"><label>Low-Cost Coins</label><input type="text" inputmode="decimal" autocomplete="off" class="multi-entry" id="plannedExtraCoins"></div>
       </div>
+<div class="multi-total" id="plannedExtraTotal" data-amount="plannedExtraInvested" data-coins="plannedExtraCoins"></div>
       <div id="plannedIterativeMessage" style="display:none; margin:16px 0;">
         <div class="info-row" style="background:rgba(0,122,255,0.08); padding:12px; border-radius:8px; margin-bottom:12px;">
           <strong>Target selling price changed due to Low-Cost holdings entered.</strong><br>
@@ -479,10 +505,11 @@
       <div class="col field">
         <label>Amount Invested in <span id="withdrawCoinsToSellLabel" style="color:var(--accent);font-weight:bold">0</span> Withdrawal Coins ₹</label>
         <span style="font-size:12px;color:var(--muted);display:block;margin-top:2px;">(FIFO cost basis)</span>
-        <input type="number" id="withdrawInvested" min="0" step="any">
+        <input type="text" inputmode="decimal" autocomplete="off" class="multi-entry" id="withdrawInvested">
       </div>
     </div>
     
+<div class="multi-total" id="withdrawInvestedTotal" data-amount="withdrawInvested"></div>
     <div class="info-row" style="margin-top:20px;">
       Low-Cost Holdings among <span id="withdrawLowCostCoinsDisplay" style="color:var(--accent);font-weight:bold">0</span> withdrawal coins With Average Cost Below
       <span style="color:var(--highlight-red);font-weight:bold">₹<span id="effectiveWithdrawPrice">0.00</span></span>
@@ -490,10 +517,11 @@
     </div>
     
     <div class="row" style="margin-top:16px;">
-      <div class="col field"><label>Low-Cost Amount ₹</label><input type="number" id="withdrawProfitInvested" min="0" step="any"></div>
-      <div class="col field"><label>Low-Cost Coins</label><input type="number" id="withdrawProfitCoins" min="0" step="any"></div>
+      <div class="col field"><label>Low-Cost Amount ₹</label><input type="text" inputmode="decimal" autocomplete="off" class="multi-entry" id="withdrawProfitInvested"></div>
+      <div class="col field"><label>Low-Cost Coins</label><input type="text" inputmode="decimal" autocomplete="off" class="multi-entry" id="withdrawProfitCoins"></div>
     </div>
     
+<div class="multi-total" id="withdrawProfitTotal" data-amount="withdrawProfitInvested" data-coins="withdrawProfitCoins"></div>
     <div id="withdrawPlaceholder" class="placeholder" style="display:block; margin-top:16px;">
       Fill required fields to see withdrawal results automatically
     </div>
@@ -524,13 +552,14 @@
     <div class="row" style="margin-top:16px;">
       <div class="col field">
         <label>Low-Cost Amount ₹</label>
-        <input type="number" id="remainingProfitInvested" min="0" step="any">
+        <input type="text" inputmode="decimal" autocomplete="off" class="multi-entry" id="remainingProfitInvested">
       </div>
       <div class="col field">
         <label>Low-Cost Coins</label>
-        <input type="number" id="remainingProfitCoins" min="0" step="any">
+        <input type="text" inputmode="decimal" autocomplete="off" class="multi-entry" id="remainingProfitCoins">
       </div>
     </div>
+<div class="multi-total" id="remainingProfitTotal" data-amount="remainingProfitInvested" data-coins="remainingProfitCoins"></div>
     <!--
     <div style="font-size:12px; color:var(--muted); margin-top:-8px; margin-bottom:12px;">
       Ignore if ALL or NONE of remaining coins are in profit
@@ -565,6 +594,130 @@
     };
     let activeToolId = null;
     let REMAINING_DATA = { inv: 0, coins: 0, loss: 0 };
+
+
+    // ───────────────────────── Comma-separated entry parsing ─────────────────────────
+    // Exact decimal arithmetic: every entry is converted to a scaled BigInt, summed,
+    // and only then turned back into a decimal string / Number. No float accumulation.
+    const ENTRY_RE = /^([+-]?)(\d+\.?\d*|\.\d+)$/;
+
+    function parseMultiEntry(raw) {
+      const text = (raw === null || raw === undefined) ? '' : String(raw);
+      const parts = text.split(',');
+      const entries = [];   // { sign:+1|-1, int:'123', frac:'45' }
+      const invalid = [];   // malformed, non-empty tokens (reported, never counted)
+      for (const part of parts) {
+        const tok = part.trim();
+        if (tok === '') continue;              // empty slot: trailing / repeated comma, spaces only
+        const m = ENTRY_RE.exec(tok);
+        if (!m) { invalid.push(tok); continue; }
+        const body = m[2];
+        const dot = body.indexOf('.');
+        const intPart = dot === -1 ? body : body.slice(0, dot);
+        const fracPart = dot === -1 ? '' : body.slice(dot + 1);
+        entries.push({ sign: m[1] === '-' ? -1 : 1, int: intPart === '' ? '0' : intPart, frac: fracPart });
+      }
+      let scale = 0;
+      for (const e of entries) scale = Math.max(scale, e.frac.length);
+      let total = 0n;
+      for (const e of entries) {
+        const scaled = BigInt(e.int + e.frac.padEnd(scale, '0'));
+        total += e.sign < 0 ? -scaled : scaled;
+      }
+      // decimal string of the exact total
+      const neg = total < 0n;
+      let digits = (neg ? -total : total).toString();
+      let str;
+      if (scale === 0) {
+        str = digits;
+      } else {
+        digits = digits.padStart(scale + 1, '0');
+        str = digits.slice(0, digits.length - scale) + '.' + digits.slice(digits.length - scale);
+        str = str.replace(/0+$/, '').replace(/\.$/, '');
+      }
+      if (str === '0') str = '0';
+      else if (neg) str = '-' + str;
+      return {
+        total: Number(str),     // value handed to the calculators
+        totalStr: str,          // exact decimal text (used for display)
+        count: entries.length,
+        invalid,
+        hasInput: text.trim() !== ''
+      };
+    }
+
+    // The value every calculator should use instead of parseFloat(rawText) || 0
+    function getMultiValue(elOrId) {
+      const el = typeof elOrId === 'string' ? document.getElementById(elOrId) : elOrId;
+      if (!el) return 0;
+      const v = parseMultiEntry(el.value).total;
+      return Number.isFinite(v) ? v : 0;
+    }
+
+    function formatDecimalStr(str, minFrac, groupInt) {
+      const neg = str.startsWith('-');
+      const body = neg ? str.slice(1) : str;
+      let [i, f = ''] = body.split('.');
+      f = f.padEnd(minFrac, '0');
+      if (groupInt) i = BigInt(i).toLocaleString('en-IN');
+      return (neg ? '-' : '') + i + (f ? '.' + f : '');
+    }
+
+    function formatAmountTotal(res) {
+      // INR, exact, at least 2 decimals; more are kept if the entries carry them
+      const rounded = roundDecimalStr(res.totalStr, 2);
+      const neg = rounded.startsWith('-');
+      const body = neg ? rounded.slice(1) : rounded;
+      return (neg ? '-' : '') + '₹' + formatDecimalStr(body, 2, true);
+    }
+    // half-up rounding on the decimal string (no float)
+    function roundDecimalStr(str, dp) {
+      const neg = str.startsWith('-');
+      const body = neg ? str.slice(1) : str;
+      let [i, f = ''] = body.split('.');
+      if (f.length <= dp) return str;
+      const keep = f.slice(0, dp);
+      const next = f.charCodeAt(dp) - 48;
+      let n = BigInt(i + keep.padEnd(dp, '0'));
+      if (next >= 5) n += 1n;
+      let s = n.toString().padStart(dp + 1, '0');
+      let out = dp > 0 ? s.slice(0, s.length - dp) + '.' + s.slice(s.length - dp) : s;
+      if (/^0(\.0+)?$/.test(out)) return '0';
+      return (neg ? '-' : '') + out;
+    }
+    function formatCoinTotal(res) {
+      return formatDecimalStr(res.totalStr, 0, true);
+    }
+
+    function refreshMultiTotal(box) {
+      if (!box) return;
+      const amtEl = box.dataset.amount ? document.getElementById(box.dataset.amount) : null;
+      const coinEl = box.dataset.coins ? document.getElementById(box.dataset.coins) : null;
+      const parts = [];
+      const warns = [];
+      const check = (el, label, res) => {
+        if (el) el.classList.toggle('has-error', res.invalid.length > 0);
+        if (res.invalid.length) {
+          warns.push(`${label}: not counted – ${res.invalid.map(t => '“' + t.replace(/[<>&]/g, '') + '”').join(', ')}`);
+        }
+      };
+      if (amtEl) {
+        const r = parseMultiEntry(amtEl.value);
+        parts.push(formatAmountTotal(r));
+        check(amtEl, 'Amount', r);
+      }
+      if (coinEl) {
+        const r = parseMultiEntry(coinEl.value);
+        parts.push(formatCoinTotal(r) + ' coins');
+        check(coinEl, 'Coins', r);
+      }
+      box.innerHTML = '<span class="mt-line">Total: ' + parts.join(' | ') + '</span>' +
+        warns.map(w => `<span class="mt-warn">${w}</span>`).join('');
+    }
+    function refreshAllMultiTotals() {
+      document.querySelectorAll('.multi-total').forEach(refreshMultiTotal);
+    }
+    // ──────────────────────────────────────────────────────────────────────────────────
 
     const formatINR = (num) => {
       if (num === null || num === undefined || isNaN(num)) return '₹0.00';
@@ -612,8 +765,8 @@
       infoRow.innerHTML = `Low-Cost Holdings With Average Cost Below <span style="color:var(--highlight-red);font-weight:bold">${formatINR(previewNetAfterFee)}</span> <span style="color:var(--accent);font-size:10px">(Target Selling price after fees deducted.)</span>`;
 
       const targetInput = parseFloat(increaseEl.value) || 0;
-      const extraInv = parseFloat(extraInvestedEl.value) || 0;
-      const extraC = parseFloat(extraCoinsEl.value) || 0;
+      const extraInv = getMultiValue(extraInvestedEl);
+      const extraC = getMultiValue(extraCoinsEl);
 
       const lowCostValid = (extraC === 0 && extraInv === 0) || (extraC > 0 && extraInv > 0);
 
@@ -794,8 +947,8 @@ const desiredPct = dcaProfitVal === "" ? 10 : parseFloat(dcaProfitVal);
         return;
       }
 
-      const oldCoins = parseFloat(extraCoinsEl.value) || 0;
-      const investedExtra = parseFloat(extraInvestedEl.value) || 0;
+      const oldCoins = getMultiValue(extraCoinsEl);
+      const investedExtra = getMultiValue(extraInvestedEl);
       const lowCostValid = (oldCoins === 0 && investedExtra === 0) || (oldCoins > 0 && investedExtra > 0);
 
       if (!lowCostValid) {
@@ -1009,8 +1162,8 @@ const desiredPct = plannedProfitVal === "" ? 10 : parseFloat(plannedProfitVal);
       const C = GLOBAL.invested || 0;
       const N = GLOBAL.coins || 0;
       const L = GLOBAL.prevLoss || 0;
-      const extraInv = parseFloat(extraInvestedEl.value) || 0;
-      const extraC = parseFloat(extraCoinsEl.value) || 0;
+      const extraInv = getMultiValue(extraInvestedEl);
+      const extraC = getMultiValue(extraCoinsEl);
 
       const lowCostValid = (extraC === 0 && extraInv === 0) || (extraC > 0 && extraInv > 0);
 
@@ -1156,9 +1309,9 @@ const desiredPct = plannedProfitVal === "" ? 10 : parseFloat(plannedProfitVal);
   const N = GLOBAL.coins || 0;
   const netGoal = parseFloat(document.getElementById('withdrawNet')?.value) || 0;
   const price = parseFloat(document.getElementById('withdrawPrice')?.value) || 0;
-  const withdrawInvested = parseFloat(document.getElementById('withdrawInvested')?.value) || 0;
-  const profitCoins = parseFloat(document.getElementById('withdrawProfitCoins')?.value) || 0;
-  const profitInvested = parseFloat(document.getElementById('withdrawProfitInvested')?.value) || 0;
+  const withdrawInvested = getMultiValue('withdrawInvested');
+  const profitCoins = getMultiValue('withdrawProfitCoins');
+  const profitInvested = getMultiValue('withdrawProfitInvested');
   const L = GLOBAL.prevLoss || 0;
   
   const placeholder = document.getElementById('withdrawPlaceholder');
@@ -1397,8 +1550,8 @@ resultDiv.innerHTML = `
   const targetEffectiveEl = document.getElementById('targetEffectivePrice');
   const lowCostDisplay = document.getElementById('remainingLowCostCoinsDisplay');
 
-  const profitCoins = parseFloat(document.getElementById('remainingProfitCoins')?.value) || 0;
-  const profitInvested = parseFloat(document.getElementById('remainingProfitInvested')?.value) || 0;
+  const profitCoins = getMultiValue('remainingProfitCoins');
+  const profitInvested = getMultiValue('remainingProfitInvested');
   const remProfitInput = document.getElementById('remainingDesiredProfit')?.value;
 const desiredPct = (remProfitInput === "" || remProfitInput === undefined) ? 10 : parseFloat(remProfitInput);
   const fee = GLOBAL.fee || 0.4;
@@ -1546,7 +1699,7 @@ const desiredPct = (remProfitInput === "" || remProfitInput === undefined) ? 10 
       updateAvgDisplay();
       localStorage.removeItem('cryptocal_global');
 
-      document.querySelectorAll('input[type="number"], select').forEach(input => {
+      document.querySelectorAll('input[type="number"], input.multi-entry, select').forEach(input => {
         if (!input.id.includes('global') && !input.id.includes('DesiredProfit') && input.id !== 'dcaMode') {
           input.value = '';
         }
@@ -1564,6 +1717,8 @@ const desiredPct = (remProfitInput === "" || remProfitInput === undefined) ? 10 
         wrapper.querySelector('.expand-icon').textContent = '▼';
       });
       activeToolId = null;
+
+      refreshAllMultiTotals();
 
       alert('Everything has been erased and reset!');
     }
@@ -1688,6 +1843,16 @@ const desiredPct = (remProfitInput === "" || remProfitInput === undefined) ? 10 
       initTools();
       loadFromStorage();
       selectAllOnFocus();
+
+      // Live totals under every comma-separated field (runs on every keystroke / paste / delete)
+      document.querySelectorAll('.multi-entry').forEach(input => {
+        input.addEventListener('input', () => {
+          const box = document.querySelector(
+            `.multi-total[data-amount="${input.id}"], .multi-total[data-coins="${input.id}"]`);
+          refreshMultiTotal(box);
+        });
+      });
+      refreshAllMultiTotals();
 
       document.querySelectorAll('#globalContent input').forEach(input => {
         input.addEventListener('input', () => {
