@@ -458,8 +458,40 @@ html.cp-locked, body.cp-locked{overflow:hidden}
   .cp-grab{display:none}
   .cp-header{padding-top:10px}
 }
+
+/* ===== In-app dialog (DCA entry + confirmations) — replaces browser prompt()/confirm() ===== */
+.dlg-overlay{position:fixed;inset:0;z-index:120;display:flex;align-items:flex-start;justify-content:center;padding:max(14px,9vh) 14px 14px;background:rgba(2,5,9,0);visibility:hidden;pointer-events:none;overflow-y:auto;overscroll-behavior:contain;transition:background .2s ease,visibility 0s linear .22s}
+.dlg-overlay.open{background:rgba(2,5,9,.74);visibility:visible;pointer-events:auto;transition:background .2s ease,visibility 0s}
+.dlg{width:100%;max-width:380px;margin:auto 0;background:var(--panel-2);border:1px solid var(--border);border-radius:20px;box-shadow:0 20px 56px rgba(0,0,0,.65);padding:18px 18px 14px;outline:none;opacity:0;transform:translateY(10px) scale(.98);transition:transform .2s ease,opacity .2s ease;white-space:normal}
+.dlg-overlay.open .dlg{opacity:1;transform:none}
+.dlg [hidden]{display:none!important}
+.dlg-title{font-size:16px;font-weight:700;letter-spacing:-.01em;line-height:1.25}
+.dlg-sub{font-size:11px;color:var(--muted);margin-top:3px;font-family:var(--font-mono)}
+.dlg-field{margin-top:15px}
+.dlg-label{display:block;font-size:10.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.dlg-input{display:flex;align-items:center;gap:8px;height:46px;padding:0 12px;background:var(--panel);border:1px solid var(--border);border-radius:12px;transition:border-color .12s,box-shadow .12s}
+.dlg-input:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-dim)}
+.dlg-input.invalid{border-color:var(--sell);box-shadow:0 0 0 3px var(--sell-dim)}
+.dlg-prefix{color:var(--muted);font-family:var(--font-mono);font-size:15px}
+.dlg-input input{flex:1;min-width:0;height:100%;padding:0;margin:0;border:0;border-radius:0;background:transparent;box-shadow:none;outline:none;color:var(--text);font-family:var(--font-mono);font-size:16px;color-scheme:dark}
+.dlg-input input:focus{box-shadow:none;border:0}
+.dlg-input input[type="date"]{font-family:var(--font-ui);font-size:15px}
+.dlg-hint{min-height:15px;margin-top:6px;font-size:11px;color:var(--muted);font-family:var(--font-mono)}
+.dlg-err{min-height:0;font-size:11px;color:var(--sell);margin-top:5px}
+.dlg-err:empty{display:none}
+.dlg-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.dlg-chip{background:transparent;color:var(--muted);border:1px solid var(--border);padding:6px 11px;border-radius:999px;font-size:11px;font-weight:600;min-height:30px}
+.dlg-chip.on{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 55%,transparent);background:var(--accent-dim)}
+.dlg-note{margin:14px 0 0;font-size:10.5px;line-height:1.45;color:var(--muted-2)}
+.dlg-msg{margin:10px 0 0;font-size:12.5px;line-height:1.5;color:var(--muted)}
+.dlg-actions{display:flex;gap:10px;margin-top:18px}
+.dlg-btn{flex:1 1 0;min-height:44px;border-radius:12px;font-size:13.5px}
+.dlg-cancel{background:transparent;color:var(--text);border:1px solid var(--border)}
+.dlg-ok.danger{background:var(--sell-dim);color:var(--sell);border:1px solid color-mix(in srgb,var(--sell) 45%,transparent)}
+.dlg button:focus-visible{outline:2px solid var(--ring,var(--accent));outline-offset:2px}
+@media (max-height:700px){.dlg-overlay{padding-top:10px}.dlg{margin:0 0 auto}}   /* short screens: sit at the top so the keyboard can't cover it */
 @media (prefers-reduced-motion:reduce){
-  .cp-overlay,.cp-sheet{transition:none!important}
+  .cp-overlay,.cp-sheet,.dlg-overlay,.dlg{transition:none!important}
   .coin-popup .detail-box.cp-fresh{animation:none}
 }
 </style>
@@ -531,6 +563,17 @@ html.cp-locked, body.cp-locked{overflow:hidden}
   </div>
 </div>
 
+<div id="dlgOverlay" class="dlg-overlay" aria-hidden="true">
+  <div id="dlgCard" class="dlg" role="dialog" aria-modal="true" aria-labelledby="dlgTitle" tabindex="-1">
+    <div class="dlg-head"><div class="dlg-title" id="dlgTitle"></div><div class="dlg-sub" id="dlgSub" hidden></div></div>
+    <div class="dlg-body" id="dlgBody"></div>
+    <div class="dlg-actions">
+      <button type="button" class="dlg-btn dlg-cancel" id="dlgCancel">Cancel</button>
+      <button type="button" class="dlg-btn dlg-ok" id="dlgOk">Save</button>
+    </div>
+  </div>
+</div>
+
 <script defer>
 (async function () {
 
@@ -562,6 +605,13 @@ const cpTarget        = document.getElementById('cpTarget');
 const cpPrev          = document.getElementById('cpPrev');
 const cpNext          = document.getElementById('cpNext');
 const cpClose         = document.getElementById('cpClose');
+const dlgOverlay      = document.getElementById('dlgOverlay');
+const dlgCard         = document.getElementById('dlgCard');
+const dlgTitle        = document.getElementById('dlgTitle');
+const dlgSub          = document.getElementById('dlgSub');
+const dlgBody         = document.getElementById('dlgBody');
+const dlgCancel       = document.getElementById('dlgCancel');
+const dlgOk           = document.getElementById('dlgOk');
 
 const API_KEY = 'CG-G1MtEv33nwCgRyvF4YNsKyDs';
 const API_BASE = 'https://api.coingecko.com/api/v3';
@@ -695,6 +745,8 @@ let popupLastFocus = null;
 let popupBackdropDown = false;
 let popupScrollLocked = false;
 let popupPrevPadRight = '';
+let dlgOpen = false, dlgDone = null, dlgValidate = null, dlgLastFocus = null, dlgBackdropDown = false, dlgCloseTimer = null;
+let dlgCtx = { cur: null, today: '', yest: '' };
 let refreshPriceTimer = null;
 let recheckTimer = null;
 let coinListLoaded = false;
@@ -1892,39 +1944,38 @@ function setDcaHistory(id, history) {
   dcaLogCache[id] = { price: top.price, dateStr: top.dateStr, timestamp: top.timestamp, history: sorted };
 }
 
-function logDcaLevel(id, symbol) {
+async function logDcaLevel(id, symbol) {
   const cur = pricesCache[id] ?? marketDataCache[id]?.current_price ?? null;
-  const suggested = cur != null ? cur.toString() : '';
-  const input = prompt(`Log the price you actually DCA'd ${symbol} at (defaults to current price — edit if you bought at a different price):`, suggested);
-  if (input === null) return;
-  const price = parseFloat(String(input).replace(/,/g, ''));
-  if (!price || price <= 0) { alert('Enter a valid price.'); return; }
-  const today = istDateStr(Date.now());
-  const dateIn = prompt(`Date of this ${symbol} DCA (YYYY-MM-DD, IST). Keep today's date, or change it to back-fill a missed entry:`, today);
-  if (dateIn === null) return;
-  const dateStr = dateIn.trim();
-  const parsed = /^\d{4}-\d{2}-\d{2}$/.test(dateStr) ? new Date(dateStr + 'T00:00:00Z') : null;
-  if (!parsed || isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== dateStr) { alert('Enter the date as YYYY-MM-DD.'); return; }
-  if (dateStr > today) { alert('The date can\u2019t be in the future.'); return; }
-  setDcaHistory(id, dcaHistoryOf(id).concat({ price, dateStr, timestamp: Date.now() }));
+  const entry = await dcaEntryDialog(symbol, cur);
+  if (!entry) return;
+  setDcaHistory(id, dcaHistoryOf(id).concat({ price: entry.price, dateStr: entry.dateStr, timestamp: Date.now() }));
   saveDcaLog();
   recomputeHoldingSignals();
   renderTable();
 }
 
-function removeDcaEntry(id, symbol, ts) {
-  const hist = dcaHistoryOf(id);
-  const keep = hist.filter(h => h.timestamp !== ts);
-  if (keep.length === hist.length) return;
-  if (!confirm(`Delete this logged ${symbol} DCA entry?`)) return;
-  setDcaHistory(id, keep);
+async function removeDcaEntry(id, symbol, ts) {
+  const entry = dcaHistoryOf(id).find(h => h.timestamp === ts);
+  if (!entry) return;
+  const ok = await confirmDialog({
+    title: `Delete this ${symbol} entry?`,
+    message: `${formatINR(entry.price, pricePrecisionFor(entry.price))} on ${entry.dateStr} will be removed from the log.`,
+    okLabel: 'Delete', danger: true
+  });
+  if (!ok) return;
+  setDcaHistory(id, dcaHistoryOf(id).filter(h => h.timestamp !== ts));   // re-read: the log may have changed meanwhile
   saveDcaLog();
   recomputeHoldingSignals();
   renderTable();
 }
 
-function clearDcaLevel(id, symbol) {
-  if (!confirm(`Clear the logged DCA level for ${symbol}? This removes the anchor used to judge whether a future add is meaningfully cheaper.`)) return;
+async function clearDcaLevel(id, symbol) {
+  const ok = await confirmDialog({
+    title: `Clear ${symbol} DCA log?`,
+    message: 'This removes the anchor used to judge whether a future add is meaningfully cheaper.',
+    okLabel: 'Clear log', danger: true
+  });
+  if (!ok) return;
   delete dcaLogCache[id];
   saveDcaLog();
   recomputeHoldingSignals();
@@ -2156,6 +2207,7 @@ popupOverlay.addEventListener('click', (e) => {
 });
 
 document.addEventListener('keydown', (e) => {
+  if (dlgOpen) { dialogKeydown(e); return; }   // an open dialog owns the keyboard: Esc closes only the dialog
   if (!coinPopupOpen) return;
   if (e.key === 'Escape') { e.preventDefault(); closeCoinPopup(); return; }
   if (e.key !== 'Tab') return;
@@ -2186,6 +2238,158 @@ popupBody.addEventListener('click', (e) => {
   else if (btn.classList.contains('dca-log-clear-btn')) clearDcaLevel(id, symbol);
   else if (btn.classList.contains('dca-del-btn')) removeDcaEntry(id, symbol, Number(btn.dataset.ts));
 });
+
+// ===== In-app dialog: DCA entry form + confirmations (replaces prompt()/confirm()/alert()) ===========
+// One static dialog element; every use only re-renders its title/body, and all listeners are attached once.
+function openDialog({ title, sub = '', bodyHtml = '', okLabel = 'Save', danger = false, validate = null, onReady = null }) {
+  if (dlgOpen) return Promise.resolve(null);
+  clearTimeout(dlgCloseTimer);
+  return new Promise((resolve) => {
+    dlgOpen = true; dlgDone = resolve; dlgValidate = validate; dlgBackdropDown = false;
+    dlgLastFocus = document.activeElement;
+    dlgTitle.textContent = title;
+    dlgSub.textContent = sub; dlgSub.hidden = !sub;
+    dlgBody.innerHTML = bodyHtml;
+    dlgOk.textContent = okLabel;
+    dlgOk.classList.toggle('danger', !!danger);
+    popupOverlay.inert = true;                       // the coin popup behind it can't take focus or taps
+    dlgOverlay.setAttribute('aria-hidden', 'false');
+    void dlgOverlay.offsetWidth;
+    dlgOverlay.classList.add('open');
+    if (onReady) onReady(); else dlgCard.focus({ preventScroll: true });
+  });
+}
+
+function closeDialog(result) {
+  if (!dlgOpen) return;
+  const done = dlgDone, back = dlgLastFocus;
+  dlgOpen = false; dlgDone = null; dlgValidate = null; dlgLastFocus = null;
+  dlgOverlay.classList.remove('open');
+  dlgOverlay.setAttribute('aria-hidden', 'true');
+  popupOverlay.inert = false;
+  clearTimeout(dlgCloseTimer);
+  dlgCloseTimer = setTimeout(() => { if (!dlgOpen) dlgBody.innerHTML = ''; }, 260);
+  if (back && back.isConnected && typeof back.focus === 'function') back.focus({ preventScroll: true });
+  else if (coinPopupOpen) popupSheet.focus({ preventScroll: true });
+  if (done) done(result);
+}
+
+function submitDialog() {
+  if (!dlgOpen) return;
+  if (!dlgValidate) { closeDialog(true); return; }
+  const r = dlgValidate();
+  if (r && r.ok) closeDialog(r.value);
+}
+
+function dialogKeydown(e) {
+  if (e.key === 'Escape') { e.preventDefault(); closeDialog(null); return; }
+  if (e.key === 'Enter' && e.target && e.target.tagName === 'INPUT') {
+    e.preventDefault();
+    const next = e.target.id === 'dlgPrice' ? dlgEl('dlgDate') : null;   // "next" on the price field -> date; Enter on the date saves
+    if (next) next.focus({ preventScroll: true }); else submitDialog();
+    return;
+  }
+  if (e.key !== 'Tab') return;
+  const f = Array.from(dlgCard.querySelectorAll('button:not(:disabled), input, [tabindex]:not([tabindex="-1"])')).filter(el => el.offsetParent !== null);
+  if (!f.length) { e.preventDefault(); return; }
+  const first = f[0], last = f[f.length - 1], active = document.activeElement;
+  if (e.shiftKey && (active === first || active === dlgCard || !dlgCard.contains(active))) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && (active === last || !dlgCard.contains(active))) { e.preventDefault(); first.focus(); }
+}
+
+dlgOk.addEventListener('click', submitDialog);
+dlgCancel.addEventListener('click', () => closeDialog(null));
+dlgOverlay.addEventListener('pointerdown', (e) => { dlgBackdropDown = (e.target === dlgOverlay); });
+dlgOverlay.addEventListener('click', (e) => {
+  const closeIt = dlgBackdropDown && e.target === dlgOverlay;
+  dlgBackdropDown = false;
+  if (closeIt) closeDialog(null);
+});
+
+function confirmDialog({ title, message, okLabel = 'Confirm', danger = false }) {
+  return openDialog({
+    title, bodyHtml: `<p class="dlg-msg">${message}</p>`, okLabel, danger,
+    onReady: () => dlgCancel.focus({ preventScroll: true })      // destructive actions never default-focus the confirm button
+  }).then(r => !!r);
+}
+
+// --- DCA entry form -------------------------------------------------------------------------------
+const dlgEl = (id) => dlgBody.querySelector('#' + id);
+
+function dlgSetError(fieldId, msg) {
+  const err = dlgEl(fieldId + 'Err'), wrap = dlgEl(fieldId + 'Wrap');
+  if (err) err.textContent = msg || '';
+  if (wrap) wrap.classList.toggle('invalid', !!msg);
+}
+
+function dlgPriceHint() {
+  const hint = dlgEl('dlgPriceHint'), input = dlgEl('dlgPrice');
+  if (!hint || !input) return;
+  const raw = input.value.replace(/[₹,\s]/g, '');
+  const p = /^(\d+\.?\d*|\.\d+)$/.test(raw) ? Number(raw) : NaN;
+  if (!(p > 0) || dlgCtx.cur == null || !(dlgCtx.cur > 0)) { hint.textContent = ''; return; }
+  const pct = (p - dlgCtx.cur) / dlgCtx.cur * 100;
+  hint.textContent = Math.abs(pct) < 0.05 ? 'At the current price' : `${Math.abs(pct).toFixed(1)}% ${pct < 0 ? 'below' : 'above'} the current price`;
+}
+
+function dlgDateChips() {
+  const d = dlgEl('dlgDate'); if (!d) return;
+  dlgBody.querySelectorAll('.dlg-chip[data-act="today"]').forEach(b => b.classList.toggle('on', d.value === dlgCtx.today));
+  dlgBody.querySelectorAll('.dlg-chip[data-act="yest"]').forEach(b => b.classList.toggle('on', d.value === dlgCtx.yest));
+}
+
+dlgBody.addEventListener('input', (e) => {
+  if (e.target.id === 'dlgPrice') { dlgSetError('dlgPrice', ''); dlgPriceHint(); }
+  else if (e.target.id === 'dlgDate') { dlgSetError('dlgDate', ''); dlgDateChips(); }
+});
+dlgBody.addEventListener('click', (e) => {
+  const b = e.target.closest('.dlg-chip'); if (!b) return;
+  const act = b.dataset.act;
+  if (act === 'cur') { const i = dlgEl('dlgPrice'); i.value = String(dlgCtx.cur); dlgSetError('dlgPrice', ''); dlgPriceHint(); i.focus({ preventScroll: true }); }
+  else if (act === 'today' || act === 'yest') { const d = dlgEl('dlgDate'); d.value = act === 'today' ? dlgCtx.today : dlgCtx.yest; dlgSetError('dlgDate', ''); dlgDateChips(); }
+});
+dlgBody.addEventListener('focusin', (e) => {   // keep the focused field clear of the on-screen keyboard
+  if (e.target.tagName === 'INPUT') setTimeout(() => { if (e.target.isConnected) e.target.scrollIntoView({ block: 'center', behavior: 'smooth' }); }, 250);
+});
+
+function dcaEntryDialog(symbol, cur) {
+  const today = istDateStr(Date.now()), yest = istDateStr(Date.now() - 864e5);
+  dlgCtx = { cur: (cur != null && cur > 0) ? cur : null, today, yest };
+  const bodyHtml = `
+    <div class="dlg-field">
+      <label class="dlg-label" for="dlgPrice">Price paid per coin</label>
+      <div class="dlg-input" id="dlgPriceWrap"><span class="dlg-prefix">₹</span><input id="dlgPrice" type="text" inputmode="decimal" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="next" value="${dlgCtx.cur != null ? dlgCtx.cur : ''}" aria-describedby="dlgPriceHint dlgPriceErr"></div>
+      <div class="dlg-hint" id="dlgPriceHint"></div>
+      <div class="dlg-err" id="dlgPriceErr" role="alert"></div>
+      ${dlgCtx.cur != null ? `<div class="dlg-chips"><button type="button" class="dlg-chip" data-act="cur">Use current ${formatINR(dlgCtx.cur, pricePrecisionFor(dlgCtx.cur))}</button></div>` : ''}
+    </div>
+    <div class="dlg-field">
+      <label class="dlg-label" for="dlgDate">Date of this DCA</label>
+      <div class="dlg-input" id="dlgDateWrap"><input id="dlgDate" type="date" value="${today}" max="${today}" min="2009-01-03" enterkeyhint="done" aria-describedby="dlgDateErr"></div>
+      <div class="dlg-chips"><button type="button" class="dlg-chip on" data-act="today">Today</button><button type="button" class="dlg-chip" data-act="yest">Yesterday</button></div>
+      <div class="dlg-err" id="dlgDateErr" role="alert"></div>
+    </div>
+    <p class="dlg-note">Missed an earlier buy? Set its date — the newest-dated entry is used for the next-add gap check.</p>`;
+  return openDialog({
+    title: 'Log DCA entry',
+    sub: `${symbol}${dlgCtx.cur != null ? ' · now ' + formatINR(dlgCtx.cur, pricePrecisionFor(dlgCtx.cur)) : ''}`,
+    bodyHtml, okLabel: 'Save entry',
+    onReady: () => { const i = dlgEl('dlgPrice'); dlgPriceHint(); i.focus({ preventScroll: true }); i.select(); },
+    validate: () => {
+      const priceEl = dlgEl('dlgPrice'), dateEl = dlgEl('dlgDate');
+      const raw = priceEl.value.replace(/[₹,\s]/g, '');
+      const price = /^(\d+\.?\d*|\.\d+)$/.test(raw) ? Number(raw) : NaN;
+      const d = dateEl.value;
+      let firstBad = null;
+      if (!(price > 0) || !isFinite(price)) { dlgSetError('dlgPrice', raw ? 'Enter a valid price, e.g. 299.50' : 'Enter the price you paid'); firstBad = priceEl; }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) { dlgSetError('dlgDate', 'Pick the date of this buy'); firstBad = firstBad || dateEl; }
+      else if (d > today) { dlgSetError('dlgDate', 'The date can\u2019t be in the future'); firstBad = firstBad || dateEl; }
+      else if (d < '2009-01-03') { dlgSetError('dlgDate', 'That date is too far back'); firstBad = firstBad || dateEl; }
+      if (firstBad) { firstBad.focus({ preventScroll: true }); return { ok: false }; }
+      return { ok: true, value: { price, dateStr: d } };
+    }
+  });
+}
 
 // drag the handle/header down to dismiss (Android bottom-sheet gesture; narrow screens only)
 const DRAG_CLOSE_PX = 90;
