@@ -2634,7 +2634,12 @@ function expandRowCore(tr, item, forceReExpand) {
   const negPct = (n) => `${n < 0 ? '−' : ''}${Math.abs(n).toFixed(0)}%`;
 
   const gate = (st, l, v, req, sub) => `<div class="dx-gate"><span class="dx-ic ${st}">${st === 'ok' ? '✓' : st === 'no' ? '✕' : '–'}</span><span class="dx-l">${l}</span><span class="dx-v"><b class="${st === 'ok' ? 'buy' : st === 'no' ? 'sell' : 'na'}">${v}</b>${req ? ` <span class="dx-req">${req}</span>` : ''}${sub ? `<span class="dx-gs">${sub}</span>` : ''}</span></div>`;
-  const targetGate = () => tgt == null ? '' : gate(nearTarget ? 'ok' : 'no', `Your target ${fmt(tgt)}`, cmp == null ? '—' : sgn((tgt - cmp) / cmp * 100, 1), `/ ≤${TARGET_PROXIMITY_PCT}% away`, `needs ≥${fmt(tgt * (1 - TARGET_PROXIMITY_PCT / 100))}`);
+  // distance wording: signed "% away" from the current price to the level (+ = level is above, − = below)
+  const awayTxt = (n, d = 1) => (n == null || isNaN(n)) ? '—' : `${sgn(n, d)} away`;
+  const DOT = ' • ';
+  const targetGate = () => tgt == null ? '' : gate(nearTarget ? 'ok' : 'no', 'Your target',
+    cmp == null ? '—' : awayTxt((tgt - cmp) / cmp * 100),
+    `${DOT}target ${fmt(tgt)}`, `needs ≥${fmt(tgt * (1 - TARGET_PROXIMITY_PCT / 100))} (≤${TARGET_PROXIMITY_PCT}%)`);
 
   let fam;
   if (ta.signal === 'EXIT' || ta.signal === 'AT RISK') fam = 'safe';
@@ -2647,28 +2652,28 @@ function expandRowCore(tr, item, forceReExpand) {
   let head = '', gates = '';
   if (fam === 'safe') {
     head = 'Is it safe to hold?';
-    gates = gate(volOk ? 'ok' : 'no', 'Real trading volume', ta.volMcapRatio == null ? 'no data' : (ta.volMcapRatio * 100).toFixed(2) + '%', `/ ≥${(LIQUIDITY_DEAD_RATIO * 100).toFixed(2)}%`)
-      + gate(microOk ? 'ok' : 'no', 'Not a micro-cap', ta.mcap == null ? '—' : formatINR(ta.mcap, 2, true), `/ ≥${formatINR(MICROCAP_FLOOR, 2, true)} or top ${RANK_CAUTION}`);
+    gates = gate(volOk ? 'ok' : 'no', 'Real trading volume', ta.volMcapRatio == null ? 'no data' : (ta.volMcapRatio * 100).toFixed(2) + '%', ta.volMcapRatio == null ? '' : `${DOT}of market cap`, `needs ≥${(LIQUIDITY_DEAD_RATIO * 100).toFixed(2)}%`)
+      + gate(microOk ? 'ok' : 'no', 'Not a micro-cap', ta.mcap == null ? '—' : formatINR(ta.mcap, 2, true), ta.rank == null ? '' : `${DOT}rank #${ta.rank}`, `needs ≥${formatINR(MICROCAP_FLOOR, 2, true)} or top ${RANK_CAUTION}`);
   } else if (fam === 'target') {
     head = 'Should I trim? (your target)';
-    gates = gate(nearTarget ? 'ok' : 'no', `Near your target ${fmt(tgt)}`, fmt(cmp), `/ ≥${fmt(tgt * (1 - TARGET_PROXIMITY_PCT / 100))}`);
+    gates = targetGate();
   } else if (fam === 'trimAth') {
     head = 'Why trim?';
-    gates = gate('ok', 'Shallow discount vs ATH', ta.athPct == null ? '—' : ta.athPct.toFixed(1) + '%', `/ > ${athWatch}%`, ta.athValue == null ? '' : `ATH ${fmt(ta.athValue)} · above ${fmt(ta.athValue * (1 + athWatch / 100))}`) + targetGate();
+    gates = gate('ok', 'Shallow discount vs ATH', sgn(ta.athPct), ta.athValue == null ? '' : `${DOT}ATH ${fmt(ta.athValue)}`, ta.athValue == null ? `needs >${sgn(athWatch, 0)}` : `needs >${fmt(ta.athValue * (1 + athWatch / 100))} (>${sgn(athWatch, 0)})`) + targetGate();
   } else if (fam === 'swing') {
     head = 'Should I trim some? (range top)';
-    gates = gate(belowHigh != null && belowHigh <= nearThr ? 'ok' : 'no', `Close to ${wd}-day high`, sgn(toHighPct), highReachBand == null ? '' : `/ ≤${Math.abs(highReachBand).toFixed(1)}%`, `high ${fmt(ta.effectiveHigh)} · needs ≥${fmt(highLvl)}`)
-      + gate(ta.rsi != null && ta.rsi >= obThr ? 'ok' : 'no', 'Overbought now (RSI)', ta.rsi == null ? '—' : ta.rsi.toFixed(1), `/ ≥${obThr.toFixed(0)}`) + targetGate();
+    gates = gate(belowHigh != null && belowHigh <= nearThr ? 'ok' : 'no', `Close to ${wd}-day high`, awayTxt(toHighPct), `${DOT}high ${fmt(ta.effectiveHigh)}`, `needs ≥${fmt(highLvl)}${highReachBand == null ? '' : ` (≤${Math.abs(highReachBand).toFixed(1)}%)`}`)
+      + gate(ta.rsi != null && ta.rsi >= obThr ? 'ok' : 'no', 'Overbought now (RSI)', ta.rsi == null ? '—' : ta.rsi.toFixed(1), (ta.rsi == null ? '' : `current${DOT}`) + `needs ≥${obThr.toFixed(0)}`) + targetGate();
   } else if (fam === 'hold') {
     head = 'Why hold?';
-    gates = gate(ta.athPct != null && ta.athPct <= athModerate ? 'ok' : 'no', 'Meaningful discount vs ATH', ta.athPct == null ? '—' : ta.athPct.toFixed(1) + '%', `/ ≤${athModerate}%`, ta.athValue == null ? '' : `ATH ${fmt(ta.athValue)} · needs ≤${fmt(ta.athValue * (1 + athModerate / 100))}`)
-      + gate(ta.drawdown365 != null && ta.drawdown365 <= buyZone ? 'ok' : 'no', `Real pullback from ${YEAR_HIGH_DAYS}-day high`, ta.drawdown365 == null ? '—' : ta.drawdown365.toFixed(1) + '%', `/ ≤${negPct(buyZone)}`, ta.high365 == null ? '' : `high ${fmt(ta.high365)} · needs ≤${fmt(ta.high365 * (1 + buyZone / 100))}`);
+    gates = gate(ta.athPct != null && ta.athPct <= athModerate ? 'ok' : 'no', 'Meaningful discount vs ATH', sgn(ta.athPct), ta.athValue == null ? '' : `${DOT}ATH ${fmt(ta.athValue)}`, ta.athValue == null ? `needs ≤${sgn(athModerate, 0)}` : `needs ≤${fmt(ta.athValue * (1 + athModerate / 100))} (≤${sgn(athModerate, 0)})`)
+      + gate(ta.drawdown365 != null && ta.drawdown365 <= buyZone ? 'ok' : 'no', `Real pullback from ${YEAR_HIGH_DAYS}-day high`, sgn(ta.drawdown365), ta.high365 == null ? '' : `${DOT}high ${fmt(ta.high365)}`, ta.high365 == null ? `needs ≤${sgn(buyZone, 0)}` : `needs ≤${fmt(ta.high365 * (1 + buyZone / 100))} (≤${sgn(buyZone, 0)})`);
   } else {
     head = 'Should I add?';
-    gates = gate(aboveLow != null && aboveLow <= nearThr ? 'ok' : 'no', `Close to ${wd}-day low`, sgn(toLowPct), lowReachBand == null ? '' : `/ ≥${sgn(lowReachBand)}`, `low ${fmt(ta.effectiveLow)} · needs ≤${fmt(lowLvl)}`)
-      + gate(ta.rsi != null && ta.rsi <= osThr ? 'ok' : 'no', 'Oversold now (RSI)', ta.rsi == null ? '—' : ta.rsi.toFixed(1), `/ ≤${osThr.toFixed(0)}`)
-      + gate(closedRsi == null ? 'na' : closedRsi <= osThr ? 'ok' : 'no', 'Oversold at last close', closedRsi == null ? '—' : closedRsi.toFixed(1), `/ ≤${osThr.toFixed(0)}`)
-      + gate(gapOk ? 'ok' : 'no', 'Below last DCA price', !lastLog ? 'no DCA logged' : (gapPct >= 0 ? gapPct.toFixed(1) + '%' : Math.abs(gapPct).toFixed(1) + '% above'), lastLog ? `/ ≥${dynGap.toFixed(1)}% below` : '', lastLog ? `last DCA ${fmt(lastLog.price)} · needs ≤${fmt(lastLog.price * (1 - dynGap / 100))}` : '');
+    gates = gate(aboveLow != null && aboveLow <= nearThr ? 'ok' : 'no', `Close to ${wd}-day low`, awayTxt(toLowPct), `${DOT}low ${fmt(ta.effectiveLow)}`, `needs ≤${fmt(lowLvl)}${lowReachBand == null ? '' : ` (≤${Math.abs(lowReachBand).toFixed(1)}%)`}`)
+      + gate(ta.rsi != null && ta.rsi <= osThr ? 'ok' : 'no', 'Oversold now (RSI)', ta.rsi == null ? '—' : ta.rsi.toFixed(1), (ta.rsi == null ? '' : `current${DOT}`) + `needs ≤${osThr.toFixed(0)}`)
+      + gate(closedRsi == null ? 'na' : closedRsi <= osThr ? 'ok' : 'no', 'Oversold at last close', closedRsi == null ? '—' : closedRsi.toFixed(1), (closedRsi == null ? '' : `last close${DOT}`) + `needs ≤${osThr.toFixed(0)}`)
+      + gate(gapOk ? 'ok' : 'no', 'Below last DCA price', !lastLog ? 'no DCA logged' : `${Math.abs(gapPct).toFixed(1)}% ${gapPct >= 0 ? 'below' : 'above'}`, lastLog ? `${DOT}last ${fmt(lastLog.price)}` : '', lastLog ? `needs ≥${dynGap.toFixed(1)}% below (≤${fmt(lastLog.price * (1 - dynGap / 100))})` : '');
   }
   const chk = (l, v) => `${l} <b class="${v == null ? 'muted' : v ? 'buy' : 'sell'}">${v == null ? '—' : v ? '✓' : '✕'}</b>`;
   const others = `Other checks: ${chk('Safe', volOk && microOk)} · ${chk('Target hit', tgt == null ? null : nearTarget)} · ${chk('Add', ta.signal === 'ACCUMULATE')} · ${chk('Swing trim', ta.signal === 'SWING TRIM')}`;
