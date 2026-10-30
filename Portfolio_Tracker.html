@@ -672,6 +672,12 @@ const VOL_SCALE_MIN = 0.6;
 const VOL_SCALE_MAX = 1.8;
 const ATH_TIER_ABS_FLOOR_PCT = -95; // beyond this a coin's likely dead/delisted, not "still watching"
 const ATH_TIER_ABS_CEIL_PCT = -12;  // watch tier shouldn't fire this close to ATH even for a very calm coin
+// Reference windows for RSI-qualified extremes. A low/high only counts as support/resistance if RSI on the
+// day it was set met THIS coin's own oversold/overbought threshold; otherwise a longer window is tried.
+// classifyHolding does this with the sliders' own RSI; computeTaFromCloses.refLow (close-based) feeds
+// the Discover scan, which has no hourly wick data.
+const REF_LOW_WINDOWS = [90, 180, 365];
+const REF_LOW_RSI_MARGIN = 0; // Discover scan only: strict, no tolerance
 const DCA_NEAR_LOW_MULT = 1.0;
 const DCA_NEAR_LOW_FLOOR_PCT = 1.5;
 const DCA_NEAR_LOW_CEIL_PCT = 8;
@@ -720,7 +726,7 @@ const DISCOVER_MAX_TA_FETCHES = 25;
 
 const EMA_TREND_LONG = 200;
 
-const TA_LOGIC_VERSION = 18; // bumped: ACCUMULATE RSI tightened (10th pct, ceiling 35) + last closed-day RSI must also be oversold; earlier: overbought band 80-92 (97th pct)
+const TA_LOGIC_VERSION = 22; // 22: add/swing gates use an RSI-qualified low/high (90→180→365d); earlier: ACCUMULATE RSI tightened (10th pct, ceiling 35) + last closed-day RSI must be oversold; overbought band 80-92 (97th pct)
 const TA_FETCH_VERSION = 7; // bumped: 90d extremes now from hourly data (exact window) + in-window OHLC wicks; 365d extremes from OHLC wicks
 
 let saved             = JSON.parse(localStorage.getItem('shortfall_portfolio') || '[]');
@@ -894,7 +900,7 @@ function calcAvgDailyMovePct(closes, days) {
 // the ATL-merge refinement `effectiveLow` applies for today — that only matters in the rare case
 // of an ATL older than 90 days that's still the coin's lowest daily close, and isn't reconstructable
 // per historical day without full ATL history, so it's left out of this backward walk.
-function reconstructStreakDays(closes, cur, rsiThreshold, nearLowThresholdPct) {
+function reconstructStreakDays(closes, cur, rsiThreshold, nearLowThresholdPct, windowDays = DCA_DIP_WINDOW_DAYS) {
   if (!closes || !closes.length || cur == null) return 1;
   const series = closes.concat([cur]);
   const rsiSeries = calcRSISeries(series, RSI_PERIOD);
@@ -904,7 +910,7 @@ function reconstructStreakDays(closes, cur, rsiThreshold, nearLowThresholdPct) {
   for (let i = series.length - 1; i >= 0; i--) {
     const rsi = rsiSeries[i];
     if (rsi == null) break;
-    const windowStart = Math.max(0, i - DCA_DIP_WINDOW_DAYS + 1);
+    const windowStart = Math.max(0, i - windowDays + 1);
     let low = Infinity;
     for (let j = windowStart; j <= i; j++) {
       if (series[j] < low) low = series[j];
@@ -943,6 +949,19 @@ function computeTaFromCloses(closes) {
     const pHigh = percentileOf(sortedRsiHigh, RSI_OVERBOUGHT_PERCENTILE);
     if (pHigh != null) rsiOverboughtThreshold = Math.min(RSI_OVERBOUGHT_CEIL, Math.max(RSI_OVERBOUGHT_FLOOR, pHigh));
   }
+  // Shortest window whose low was set while RSI was genuinely oversold; falls back to 90d (unqualified).
+  let refLow = null;
+  for (const N of REF_LOW_WINDOWS) {
+    const w = closes.slice(-N);
+    if (!w.length) continue;
+    const lo = Math.min(...w);
+    const idx = closes.length - w.length + w.indexOf(lo);
+    const r = rsiSeries[idx];
+    const ok = r != null && !isNaN(r) && r <= rsiOversoldThreshold + REF_LOW_RSI_MARGIN;
+    const cand = { val: lo, window: w.length, daysAgo: closes.length - idx, rsi: (r != null && !isNaN(r)) ? r : null, qualified: ok };
+    if (!refLow) refLow = cand;
+    if (ok) { refLow = cand; break; }
+  }
   const avgDailyMove = calcAvgDailyMovePct(closes, DCA_VOL_LOOKBACK_DAYS);
   const volScale = avgDailyMove != null
     ? Math.max(VOL_SCALE_MIN, Math.min(VOL_SCALE_MAX, avgDailyMove / VOL_SCALE_REF_PCT))
@@ -974,6 +993,7 @@ function computeTaFromCloses(closes) {
     athTiers,
     emaLong: emaLongSeries.length ? emaLongSeries[emaLongSeries.length - 1] : null,
     rollingLow,
+    refLow,
     rollingLowDaysAgo,
     rollingHigh,
     rollingHighDaysAgo,
@@ -1525,6 +1545,58 @@ function classifyHolding(md, item, ta, macroTa) {
   const highDayK = highDaysAgoApprox ? refineExtremeDay(ta?.closes, effectiveHighDaysAgo, effectiveHigh) : effectiveHighDaysAgo;
   const lowRsi = rsiAtExtreme(liveRsiSeries, lowDayK, isLiveLow);
   const highRsi = rsiAtExtreme(liveRsiSeries, highDayK, isLiveHigh);
+  // RSI on the day a longer-window extreme was set. Wick-based dates are approximate, so snap to the
+  // nearest-priced close within ±4 days of the reported day.
+  const rsiNear = (daysAgo, price, live) => {
+    if (live) return rsiAtExtreme(liveRsiSeries, 0, true);
+    const cl = ta?.closes;
+    if (daysAgo == null || price == null || !cl || !cl.length || daysAgo > cl.length + 4) return null;
+    let bestK = null, bd = Infinity;
+    for (let k = Math.max(1, daysAgo - 4); k <= Math.min(cl.length, daysAgo + 4); k++) {
+      if (rsiAtExtreme(liveRsiSeries, k, false) == null) continue; // RSI needs ~14 candles of warm-up
+      const d = Math.abs(cl[cl.length - k] - price);
+      if (d < bd) { bd = d; bestK = k; }
+    }
+    return bestK == null ? null : rsiAtExtreme(liveRsiSeries, bestK, false);
+  };
+  const winExt = N => {
+    const cl = ta?.closes;
+    if (!cl || !cl.length || cur == null) return null;
+    const w = cl.slice(-N);
+    const cLo = Math.min(...w), cHi = Math.max(...w);
+    const lows = [{ v: cLo, k: w.length - w.indexOf(cLo), live: false }];
+    const highs = [{ v: cHi, k: w.length - w.indexOf(cHi), live: false }];
+    if (effectiveLow != null) lows.push({ v: effectiveLow, k: lowDayK, live: isLiveLow });
+    if (effectiveHigh != null) highs.push({ v: effectiveHigh, k: highDayK, live: isLiveHigh });
+    if (yr && yr.lowDaysAgo != null && yr.lowDaysAgo <= N) lows.push({ v: yr.low, k: yr.lowDaysAgo, live: yr.lowDaysAgo === 0 });
+    if (yr && yr.highDaysAgo != null && yr.highDaysAgo <= N) highs.push({ v: yr.high, k: yr.highDaysAgo, live: yr.highDaysAgo === 0 });
+    const atlK = atlDate ? daysSince(atlDate) : null, athK = athDate ? daysSince(athDate) : null;
+    if (atlValue != null && atlK != null && atlK <= N) lows.push({ v: atlValue, k: isLiveAtl ? 0 : atlK, live: !!isLiveAtl });
+    if (athValue != null && athK != null && athK <= N) highs.push({ v: athValue, k: isLiveAth ? 0 : athK, live: !!isLiveAth });
+    const lo = lows.reduce((m, x) => x.v < m.v ? x : m), hi = highs.reduce((m, x) => x.v > m.v ? x : m);
+    return { n: w.length, lo: lo.v, hi: hi.v, loK: lo.k, hiK: hi.k, loLive: lo.live, hiLive: hi.live,
+      loRsi: rsiNear(lo.k, lo.v, lo.live), hiRsi: rsiNear(hi.k, hi.v, hi.live) };
+  };
+  const win180 = winExt(180);
+  const low365Rsi = yr ? rsiNear(yr.lowDaysAgo, yr.low, yr.lowDaysAgo === 0) : null;
+  const high365Rsi = yr ? rsiNear(yr.highDaysAgo, yr.high, yr.highDaysAgo === 0) : null;
+  const atlD = isLiveAtl ? 0 : daysSince(atlDate), athD = isLiveAth ? 0 : daysSince(athDate);
+  const atlRsi = (atlD != null && atlD <= 360) ? rsiNear(atlD, atlValue, isLiveAtl) : null;
+  const athRsi = (athD != null && athD <= 360) ? rsiNear(athD, athValue, isLiveAth) : null;
+  // Gate references. Pick the shortest window whose extreme was set at an RSI that meets THIS coin's
+  // own threshold, using the exact same low/high + RSI the sliders display (so gate and sliders agree).
+  // If no window qualifies, fall back to the 90d extreme as before.
+  const w90 = ta?.rollingLowWindowDays ?? DCA_DIP_WINDOW_DAYS;
+  const osThrG = ta?.rsiOversoldThreshold ?? RSI_OVERSOLD, obThrG = ta?.rsiOverboughtThreshold ?? RSI_OVERBOUGHT;
+  const lowCands = [], highCands = [];
+  if (effectiveLow != null) lowCands.push({ w: w90, v: effectiveLow, rsi: lowRsi });
+  if (effectiveHigh != null) highCands.push({ w: w90, v: effectiveHigh, rsi: highRsi });
+  if (win180 && win180.n > w90 + 5) { lowCands.push({ w: 180, v: win180.lo, rsi: win180.loRsi }); highCands.push({ w: 180, v: win180.hi, rsi: win180.hiRsi }); }
+  if (yr && yr.low != null && yr.high != null) { lowCands.push({ w: YEAR_HIGH_DAYS, v: yr.low, rsi: low365Rsi }); highCands.push({ w: YEAR_HIGH_DAYS, v: yr.high, rsi: high365Rsi }); }
+  const qLow = lowCands.find(c => c.rsi != null && c.rsi <= osThrG) || lowCands[0] || null;
+  const qHigh = highCands.find(c => c.rsi != null && c.rsi >= obThrG) || highCands[0] || null;
+  const gateWindow = qLow ? qLow.w : w90, gateLow = qLow ? qLow.v : effectiveLow;
+  const gateHighWindow = qHigh ? qHigh.w : w90, gateHigh = qHigh ? qHigh.v : effectiveHigh;
 
   const isDiscountCandidate = signal === 'WAIT';
   let dcaStreakDay = null;
@@ -1536,7 +1608,7 @@ function classifyHolding(md, item, ta, macroTa) {
       : ` ${relStrength > 0 ? 'Outperforming' : 'Underperforming'} BTC (${relStrength >= 0 ? '+' : ''}${relStrength.toFixed(1)}pp over ${REL_STRENGTH_WINDOW_DAYS}d) — ${relStrength > 0 ? 'capital may already be rotating in.' : 'weight this accordingly.'}`;
 
     if (ta && ta.rollingLow != null && cur != null) {
-      const aboveLow = (cur - effectiveLow) / effectiveLow * 100;
+      const aboveLow = (cur - gateLow) / gateLow * 100;
       const nearLowThresholdPct = ta.nearLowThresholdPct ?? DCA_DIP_NEAR_PCT;
       const nearLow = aboveLow <= nearLowThresholdPct;
       const rsiThreshold = ta.rsiOversoldThreshold ?? RSI_OVERSOLD;
@@ -1548,7 +1620,7 @@ function classifyHolding(md, item, ta, macroTa) {
       const avgDailyMove = ta.avgDailyMove ?? null;
       const atLow = nearLow && rsiOversold;
       if (atLow) {
-        dcaStreakDay = reconstructStreakDays(ta.closes, cur, rsiThreshold, nearLowThresholdPct);
+        dcaStreakDay = reconstructStreakDays(ta.closes, cur, rsiThreshold, nearLowThresholdPct, gateWindow);
 
         const lastLog = dcaLogCache[item.id] ?? null;
         const dynGapPct = Math.max(
@@ -1563,7 +1635,7 @@ function classifyHolding(md, item, ta, macroTa) {
           strength = Math.round(Math.min(60, strength + 30) + relStrengthBonus);
           const gapNote = lastLog == null ? '' : ` Also ${gapPct.toFixed(1)}% below last DCA (${formatINR(lastLog.price, pricePrecisionFor(lastLog.price))}) — a real step down.`;
           const streakNote = dcaStreakDay === 1 ? 'First flagged today.' : `Day ${dcaStreakDay} of this dip.`;
-          reason = `${depth.toFixed(0)}% below ATH${yrNote}, ${aboveLow.toFixed(1)}% above its ${ta.rollingLowWindowDays}d low (within this coin's own ≤${nearLowThresholdPct.toFixed(1)}% band), RSI ${liveRsi.toFixed(2)} (oversold vs this coin's own ≤${rsiThreshold.toFixed(0)} bottom zone) — conditions met. ${streakNote}${gapNote}${relStrengthNote}`;
+          reason = `${depth.toFixed(0)}% below ATH${yrNote}, ${aboveLow.toFixed(1)}% above its ${gateWindow}d low (within this coin's own ≤${nearLowThresholdPct.toFixed(1)}% band), RSI ${liveRsi.toFixed(2)} (oversold vs this coin's own ≤${rsiThreshold.toFixed(0)} bottom zone) — conditions met. ${streakNote}${gapNote}${relStrengthNote}`;
         } else {
           const nextDcaPrice = lastLog.price * (1 - dynGapPct / 100);
           const positionNote = gapPct >= 0
@@ -1573,11 +1645,11 @@ function classifyHolding(md, item, ta, macroTa) {
         }
       } else {
         if (nearLow && rsiLiveOversold && !rsiClosedOversold) {
-          reason = `${depth.toFixed(0)}% below ATH${yrNote}, near its ${ta.rollingLowWindowDays}d low, live RSI ${liveRsi.toFixed(2)} is oversold (≤${rsiThreshold.toFixed(0)}), but the last daily close (RSI ${ta.rsi == null ? '—' : ta.rsi.toFixed(2)}) hasn't confirmed it yet — waiting for a daily close.`;
+          reason = `${depth.toFixed(0)}% below ATH${yrNote}, near its ${gateWindow}d low, live RSI ${liveRsi.toFixed(2)} is oversold (≤${rsiThreshold.toFixed(0)}), but the last daily close (RSI ${ta.rsi == null ? '—' : ta.rsi.toFixed(2)}) hasn't confirmed it yet — waiting for a daily close.`;
         } else if (nearLow && !rsiOversold) {
-          reason = `${depth.toFixed(0)}% below ATH${yrNote}, near its ${ta.rollingLowWindowDays}d low, but RSI (${liveRsi == null ? '—' : liveRsi.toFixed(2)}) hasn't reached this coin's own oversold zone (≤${rsiThreshold.toFixed(0)}) yet.`;
+          reason = `${depth.toFixed(0)}% below ATH${yrNote}, near its ${gateWindow}d low, but RSI (${liveRsi == null ? '—' : liveRsi.toFixed(2)}) hasn't reached this coin's own oversold zone (≤${rsiThreshold.toFixed(0)}) yet.`;
         } else {
-          reason = `${depth.toFixed(0)}% below ATH${yrNote}, but ${Math.abs(aboveLow).toFixed(1)}% ${aboveLow >= 0 ? 'above' : 'below'} its ${ta.rollingLowWindowDays}d low — outside this coin's own ≤${nearLowThresholdPct.toFixed(1)}% near-low band.`;
+          reason = `${depth.toFixed(0)}% below ATH${yrNote}, but ${Math.abs(aboveLow).toFixed(1)}% ${aboveLow >= 0 ? 'above' : 'below'} its ${gateWindow}d low — outside this coin's own ≤${nearLowThresholdPct.toFixed(1)}% near-low band.`;
         }
       }
     } else {
@@ -1590,13 +1662,14 @@ function classifyHolding(md, item, ta, macroTa) {
   // own recent range is a chance to bank a partial profit and rebuy lower — independent of whether
   // the user's own longer-term sell target has been reached.
   let nearHigh = false;
+  const swingHigh = gateHigh ?? effectiveHigh;
   if (effectiveHigh != null && cur != null && signal !== 'EXIT' && signal !== 'AT RISK' && signal !== 'ACCUMULATE' && signal !== 'TRIM') {
-    const belowHighPct = (effectiveHigh - cur) / effectiveHigh * 100;
+    const belowHighPct = (swingHigh - cur) / swingHigh * 100;
     const nearHighThresholdPct = ta?.nearLowThresholdPct ?? DCA_DIP_NEAR_PCT;
     nearHigh = belowHighPct <= nearHighThresholdPct;
     const rsiOverboughtThreshold = ta?.rsiOverboughtThreshold ?? RSI_OVERBOUGHT;
     const rsiOverbought = liveRsi != null && liveRsi >= rsiOverboughtThreshold;
-    const windowLabel = ta?.rollingLowWindowDays ?? DCA_DIP_WINDOW_DAYS;
+    const windowLabel = gateHighWindow;
     if (nearHigh && rsiOverbought) {
       signal = 'SWING TRIM'; colorKey = 'swing';
       strength = Math.max(strength, 50);
@@ -1637,12 +1710,17 @@ function classifyHolding(md, item, ta, macroTa) {
     emaLong: liveEmaLong,
     rollingLow: ta?.rollingLow ?? null,
     effectiveLow,
+    gateLow,
+    gateLowWindow: gateWindow,
     effectiveLowDaysAgo: lowDayK,
     lowDaysAgoApprox,
     lowRsi,
+    win180, low365Rsi, high365Rsi, atlRsi, athRsi,
     isLiveLow,
     rollingHigh: ta?.rollingHigh ?? null,
     effectiveHigh,
+    gateHigh,
+    gateHighWindow,
     effectiveHighDaysAgo: highDayK,
     highDaysAgoApprox,
     highRsi,
@@ -2610,6 +2688,16 @@ function expandRowCore(tr, item, forceReExpand) {
   const osThr = ta.rsiOversoldThreshold ?? RSI_OVERSOLD;
   const obThr = ta.rsiOverboughtThreshold ?? RSI_OVERBOUGHT;
   const aboveLow = (ta.effectiveLow != null && cmp != null) ? (cmp - ta.effectiveLow) / ta.effectiveLow * 100 : null;
+  const gHigh = ta.gateHigh ?? ta.effectiveHigh, gHWd = ta.gateHighWindow ?? wd;
+  const gBelow = (gHigh != null && cmp != null) ? (gHigh - cmp) / gHigh * 100 : null;
+  const gHLvl = gHigh != null ? gHigh * (1 - nearThr / 100) : null;
+  const gHTo = (gHigh != null && cmp != null && cmp > 0) ? (gHigh - cmp) / cmp * 100 : null;
+  const gHBand = (gHigh != null && gHLvl != null) ? (gHigh - gHLvl) / gHLvl * 100 : null;
+  const gLow = ta.gateLow ?? ta.effectiveLow, gWd = ta.gateLowWindow ?? wd;
+  const gAbove = (gLow != null && cmp != null) ? (cmp - gLow) / gLow * 100 : null;
+  const gLvl = gLow != null ? gLow * (1 + nearThr / 100) : null;
+  const gTo = (gLow != null && cmp != null && cmp > 0) ? (gLow - cmp) / cmp * 100 : null;
+  const gBand = (gLow != null && gLvl != null) ? (gLow - gLvl) / gLvl * 100 : null;
   const belowHigh = (ta.effectiveHigh != null && cmp != null) ? (ta.effectiveHigh - cmp) / ta.effectiveHigh * 100 : null;
   const closedRsi = taC.rsi ?? null;
   const lastLog = dcaLogCache[item.id] ?? null;
@@ -2623,14 +2711,6 @@ function expandRowCore(tr, item, forceReExpand) {
   const athWatch = ta.athTiers?.watch ?? DCA_WATCH_PCT;
   const athModerate = ta.athTiers?.moderate ?? DCA_MODERATE_PCT;
   const buyZone = ta.yearTiers?.moderate ?? DCA_YEAR_MODERATE_PCT;
-  const lowLvl = ta.effectiveLow != null ? ta.effectiveLow * (1 + nearThr / 100) : null;   // highest price still 'close to the low'
-  const highLvl = ta.effectiveHigh != null ? ta.effectiveHigh * (1 - nearThr / 100) : null; // lowest price still 'close to the high'
-  // % move from the current price needed to reach the rolling low / high (same idea as the target gate).
-  const toLowPct  = (ta.effectiveLow  != null && cmp != null && cmp > 0) ? (ta.effectiveLow  - cmp) / cmp * 100 : null;
-  const toHighPct = (ta.effectiveHigh != null && cmp != null && cmp > 0) ? (ta.effectiveHigh - cmp) / cmp * 100 : null;
-  // the unchanged pass/fail band (price within nearThr% of the extreme), restated on the same "from current price" basis
-  const lowReachBand  = lowLvl  != null ? (ta.effectiveLow  - lowLvl)  / lowLvl  * 100 : null;
-  const highReachBand = highLvl != null ? (ta.effectiveHigh - highLvl) / highLvl * 100 : null;
   const negPct = (n) => `${n < 0 ? '−' : ''}${Math.abs(n).toFixed(0)}%`;
 
   const gate = (st, l, v, req, sub) => `<div class="dx-gate"><span class="dx-ic ${st}">${st === 'ok' ? '✓' : st === 'no' ? '✕' : '–'}</span><span class="dx-l">${l}</span><span class="dx-v"><b class="${st === 'ok' ? 'buy' : st === 'no' ? 'sell' : 'na'}">${v}</b>${req ? ` <span class="dx-req">${req}</span>` : ''}${sub ? `<span class="dx-gs">${sub}</span>` : ''}</span></div>`;
@@ -2647,7 +2727,7 @@ function expandRowCore(tr, item, forceReExpand) {
   else if (ta.signal === 'SWING TRIM') fam = 'swing';
   else if (ta.signal === 'ACCUMULATE') fam = 'add';
   else if (ta.signal === 'HOLD') fam = 'hold';
-  else fam = (belowHigh != null && aboveLow != null && belowHigh < aboveLow) ? 'swing' : 'add';
+  else fam = (gBelow != null && gAbove != null && gBelow < gAbove) ? 'swing' : 'add';
 
   let head = '', gates = '';
   if (fam === 'safe') {
@@ -2662,7 +2742,7 @@ function expandRowCore(tr, item, forceReExpand) {
     gates = gate('ok', 'Shallow discount vs ATH', sgn(ta.athPct), ta.athValue == null ? '' : `${DOT}ATH ${fmt(ta.athValue)}`, ta.athValue == null ? `needs >${sgn(athWatch, 0)}` : `needs >${fmt(ta.athValue * (1 + athWatch / 100))} (>${sgn(athWatch, 0)})`) + targetGate();
   } else if (fam === 'swing') {
     head = 'Should I trim some? (range top)';
-    gates = gate(belowHigh != null && belowHigh <= nearThr ? 'ok' : 'no', `Close to ${wd}-day high`, awayTxt(toHighPct), `${DOT}high ${fmt(ta.effectiveHigh)}`, `needs ≥${fmt(highLvl)}${highReachBand == null ? '' : ` (≤${Math.abs(highReachBand).toFixed(1)}%)`}`)
+    gates = gate(gBelow != null && gBelow <= nearThr ? 'ok' : 'no', `Close to ${gHWd}-day high`, awayTxt(gHTo), `${DOT}high ${fmt(gHigh)}`, `needs ≥${fmt(gHLvl)}${gHBand == null ? '' : ` (≤${Math.abs(gHBand).toFixed(1)}%)`}`)
       + gate(ta.rsi != null && ta.rsi >= obThr ? 'ok' : 'no', 'Overbought now (RSI)', ta.rsi == null ? '—' : ta.rsi.toFixed(1), (ta.rsi == null ? '' : `current${DOT}`) + `needs ≥${obThr.toFixed(0)}`) + targetGate();
   } else if (fam === 'hold') {
     head = 'Why hold?';
@@ -2670,7 +2750,7 @@ function expandRowCore(tr, item, forceReExpand) {
       + gate(ta.drawdown365 != null && ta.drawdown365 <= buyZone ? 'ok' : 'no', `Real pullback from ${YEAR_HIGH_DAYS}-day high`, sgn(ta.drawdown365), ta.high365 == null ? '' : `${DOT}high ${fmt(ta.high365)}`, ta.high365 == null ? `needs ≤${sgn(buyZone, 0)}` : `needs ≤${fmt(ta.high365 * (1 + buyZone / 100))} (≤${sgn(buyZone, 0)})`);
   } else {
     head = 'Should I add?';
-    gates = gate(aboveLow != null && aboveLow <= nearThr ? 'ok' : 'no', `Close to ${wd}-day low`, awayTxt(toLowPct), `${DOT}low ${fmt(ta.effectiveLow)}`, `needs ≤${fmt(lowLvl)}${lowReachBand == null ? '' : ` (≤${Math.abs(lowReachBand).toFixed(1)}%)`}`)
+    gates = gate(gAbove != null && gAbove <= nearThr ? 'ok' : 'no', `Close to ${gWd}-day low`, awayTxt(gTo), `${DOT}low ${fmt(gLow)}`, `needs ≤${fmt(gLvl)}${gBand == null ? '' : ` (≤${Math.abs(gBand).toFixed(1)}%)`}`)
       + gate(ta.rsi != null && ta.rsi <= osThr ? 'ok' : 'no', 'Oversold now (RSI)', ta.rsi == null ? '—' : ta.rsi.toFixed(1), (ta.rsi == null ? '' : `current${DOT}`) + `needs ≤${osThr.toFixed(0)}`)
       + gate(closedRsi == null ? 'na' : closedRsi <= osThr ? 'ok' : 'no', 'Oversold at last close', closedRsi == null ? '—' : closedRsi.toFixed(1), (closedRsi == null ? '' : `last close${DOT}`) + `needs ≤${osThr.toFixed(0)}`)
       + gate(gapOk ? 'ok' : 'no', 'Below last DCA price', !lastLog ? 'no DCA logged' : `${Math.abs(gapPct).toFixed(1)}% ${gapPct >= 0 ? 'below' : 'above'}`, lastLog ? `${DOT}last ${fmt(lastLog.price)}` : '', lastLog ? `needs ≥${dynGap.toFixed(1)}% below (≤${fmt(lastLog.price * (1 - dynGap / 100))})` : '');
@@ -2705,6 +2785,7 @@ function expandRowCore(tr, item, forceReExpand) {
   };
   const dTxt = (live, approx, d) => live ? 'today⚡' : (d == null ? '—' : (approx ? '~' : '') + d + 'd');
   const D = '<i class="dt">·</i>';
+  const rsiTxtN = (v, approx) => `${D}RSI ${v == null ? '—' : (approx ? '~' : '') + v.toFixed(1)}`;
   const rsiTxt = (v, approx) => v == null ? '' : `${D}RSI ${approx ? '~' : ''}${v.toFixed(1)}`;
 
   const todayHtml = hasRange
@@ -2718,17 +2799,22 @@ function expandRowCore(tr, item, forceReExpand) {
     l: `<b>${sgn(aboveLow)}</b>${D}${dTxt(ta.isLiveLow, ta.lowDaysAgoApprox, ta.effectiveLowDaysAgo)}${rsiTxt(ta.lowRsi, ta.lowDaysAgoApprox)}`,
     r: `<b>${sgn(belowHigh == null ? null : -belowHigh)}</b>${D}${dTxt(ta.isLiveHigh, ta.highDaysAgoApprox, ta.effectiveHighDaysAgo)}${rsiTxt(ta.highRsi, ta.highDaysAgoApprox)}`
   });
+  const w180 = ta.win180;
+  const d180Html = (w180 && w180.n > wd + 5) ? rng('180 days', w180.lo, w180.hi, {
+    l: `<b>${sgn((cmp - w180.lo) / w180.lo * 100)}</b>${D}${dTxt(w180.loLive, false, w180.loK)}${rsiTxtN(w180.loRsi, false)}`,
+    r: `<b>${sgn(-(w180.hi - cmp) / w180.hi * 100)}</b>${D}${dTxt(w180.hiLive, false, w180.hiK)}${rsiTxtN(w180.hiRsi, false)}`
+  }) : '';
   const yrHtml = rng(YEAR_HIGH_DAYS === 365 ? '1 year' : `${YEAR_HIGH_DAYS} days`, ta.low365, ta.high365, {
-    l: `<b>${sgn(ta.above365Low)}</b>${D}${ta.low365DaysAgo === 0 ? 'today' : (ta.low365Approx ? '~' : '') + (ta.low365DaysAgo ?? '—') + 'd'}`,
-    r: `<b>${sgn(ta.drawdown365)}</b>${D}${ta.high365DaysAgo === 0 ? 'today' : (ta.high365Approx ? '~' : '') + (ta.high365DaysAgo ?? '—') + 'd'}`
+    l: `<b>${sgn(ta.above365Low)}</b>${D}${ta.low365DaysAgo === 0 ? 'today' : (ta.low365Approx ? '~' : '') + (ta.low365DaysAgo ?? '—') + 'd'}${rsiTxtN(ta.low365Rsi, ta.low365Approx)}`,
+    r: `<b>${sgn(ta.drawdown365)}</b>${D}${ta.high365DaysAgo === 0 ? 'today' : (ta.high365Approx ? '~' : '') + (ta.high365DaysAgo ?? '—') + 'd'}${rsiTxtN(ta.high365Rsi, ta.high365Approx)}`
   });
   const athDays = ta.isLiveAth ? 0 : daysSince(ta.athDate);
   const atlDays = ta.isLiveAtl ? 0 : daysSince(ta.atlDate);
   const pctAboveAtl = (cmp != null && ta.atlValue != null && ta.atlValue !== 0) ? ((cmp - ta.atlValue) / ta.atlValue * 100) : null;
   const allHtml = rng('All time', ta.atlValue, ta.athValue, {
     log: true,
-    l: `<b>${sgn(pctAboveAtl)}</b>${D}${ta.isLiveAtl ? 'today⚡' : (atlDays == null ? '—' : atlDays + 'd')}`,
-    r: `<b>${sgn(ta.athPct)}</b>${D}${ta.isLiveAth ? 'today⚡' : (athDays == null ? '—' : athDays + 'd')}`
+    l: `<b>${sgn(pctAboveAtl)}</b>${D}${ta.isLiveAtl ? 'today⚡' : (atlDays == null ? '—' : atlDays + 'd')}${rsiTxtN(ta.atlRsi, false)}`,
+    r: `<b>${sgn(ta.athPct)}</b>${D}${ta.isLiveAth ? 'today⚡' : (athDays == null ? '—' : athDays + 'd')}${rsiTxtN(ta.athRsi, false)}`
   });
   // Rolling 24h range (CoinGecko). The live price can only widen it (it is a real observed price).
   const rollChg = getRollingChangePct(item.id);
@@ -2780,7 +2866,7 @@ function expandRowCore(tr, item, forceReExpand) {
   presentCoinPopup(item, `<div class="detail-box"><div class="dx">
       <div class="dx-verdict" style="--vc:${vc}"><span class="dx-vp">${label} ${ta.strength}%${ta.signal === 'ACCUMULATE' && ta.dcaStreakDay ? ` · D${ta.dcaStreakDay}` : ''}</span><p>${ta.reason}</p></div>
       <div><h3>${head}</h3>${gates}<div class="dx-oth">${others}</div></div>
-      <div>${todayHtml}${h24Html}${d90Html}${yrHtml}${allHtml}</div>
+      <div>${todayHtml}${h24Html}${d90Html}${d180Html}${yrHtml}${allHtml}</div>
       <div class="dx-grid">${momentum}</div>
       ${liquidity}
       ${ta.taStale ? '<div class="dx-hint">TA history for this coin hasn\'t loaded yet.</div>' : ''}
@@ -2903,8 +2989,11 @@ async function discoverCandidates() {
         const ta = computeTaFromCloses(closes);
         if (ta && auditTa(ta) && ta.rollingLow != null) {
           const cur = md.current_price;
-          const atlWithinWindow = md.atl_date ? daysSince(md.atl_date) <= ta.rollingLowWindowDays : false;
-          const effectiveLow = Math.min(ta.rollingLow, cur, (md.low_24h != null ? md.low_24h : Infinity), (atlWithinWindow && md.atl != null) ? md.atl : Infinity);
+          const rl = ta.refLow;
+          const wide = !!(rl && rl.window > ta.rollingLowWindowDays);
+          const lowWin = wide ? rl.window : ta.rollingLowWindowDays;
+          const atlWithinWindow = md.atl_date ? daysSince(md.atl_date) <= lowWin : false;
+          const effectiveLow = Math.min(wide ? rl.val : ta.rollingLow, cur, (md.low_24h != null ? md.low_24h : Infinity), (atlWithinWindow && md.atl != null) ? md.atl : Infinity);
           const aboveLow = (cur - effectiveLow) / effectiveLow * 100;
           const nearLowThresholdPct = ta.nearLowThresholdPct ?? DCA_DIP_NEAR_PCT;
           const nearLow = aboveLow <= nearLowThresholdPct;
@@ -2918,7 +3007,7 @@ async function discoverCandidates() {
             passing.push({
               id: md.id, symbol: (md.symbol || '').toUpperCase(), name: md.name,
               price: cur, athPct: md.ath_change_percentage, yearPct: yr ? yr.pct : null, aboveLow, rsi: liveRsi, rsiThreshold, nearLowThresholdPct,
-              windowDays: ta.rollingLowWindowDays, rank: md.market_cap_rank
+              windowDays: lowWin, rank: md.market_cap_rank
             });
           }
         }
