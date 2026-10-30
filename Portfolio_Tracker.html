@@ -372,9 +372,12 @@ tbody tr.main-row.open .coin-name{color:var(--accent)}
 .dx-v b.na{color:var(--muted)}
 .dx-req{color:var(--muted)}
 .dx-oth{font-size:9.5px;color:var(--muted);margin-top:3px}
+.dx-blk{padding:5px 0 4px}
+.dx-blk + .dx-blk{border-top:1px solid var(--border)}
+.dx-blk .dx-rng{margin-top:0}
 .dx-rng{display:grid;grid-template-columns:50px auto 1fr auto;gap:6px;align-items:center;font-family:var(--font-mono);font-size:9.5px;margin-top:5px;color:var(--muted)}
 .dx-rng b{font-family:var(--font-ui);font-size:10px;color:var(--text);white-space:nowrap}
-.dx-bar{position:relative;height:6px;border-radius:3px;background:var(--track);margin:0 6px}
+.dx-bar{position:relative;height:6px;border-radius:3px;margin:0 6px;background:var(--track);--mid:50%;background:linear-gradient(90deg,color-mix(in srgb,var(--sell) 50%,var(--track)) 0%,color-mix(in srgb,var(--sell) 22%,var(--track)) var(--mid),color-mix(in srgb,var(--buy) 22%,var(--track)) var(--mid),color-mix(in srgb,var(--buy) 50%,var(--track)) 100%)}
 .dx-bar .m{position:absolute;top:50%;width:12px;height:12px;border-radius:50%;background:var(--accent);border:2px solid var(--panel-2);transform:translate(-50%,-50%);box-shadow:0 0 0 1.5px var(--accent)}
 .dx-bar .o{position:absolute;top:-3px;width:2px;height:12px;background:var(--muted);transform:translateX(-50%)}
 .dx-met{display:flex;flex-wrap:wrap;justify-content:space-between;column-gap:8px;font-family:var(--font-mono);font-size:9.5px;color:var(--muted);margin:2px 0 0 56px}
@@ -445,6 +448,24 @@ html.cp-locked, body.cp-locked{overflow:hidden}
 .coin-popup .dx-acts>*{flex:1 1 auto;min-height:34px}
 .coin-popup .dx-acts .detail-remove-btn{flex:0 0 auto}
 .coin-popup .chart-toggle-row{margin-top:10px}
+/* compact popup: tighter vertical rhythm so the whole card fits on a phone without scrolling */
+.coin-popup .dx{gap:4px;padding-top:6px}
+.coin-popup .detail-reason{padding-top:6px}
+.coin-popup .dx-verdict{padding:5px 8px}
+.coin-popup .dx-verdict p{font-size:10.5px;line-height:1.3}
+.coin-popup .dx-gate{padding:2px 0;gap:6px}
+.coin-popup .dx-oth{margin-top:1px}
+.coin-popup .dx-blk{padding:3px 0 2px}
+.coin-popup .dx-met{margin-top:1px}
+.coin-popup .dx-cell{padding:4px 8px}
+.coin-popup .dx-liq{font-size:9px}
+.coin-popup .dx-acts>*{min-height:30px;padding:3px 6px}
+.coin-popup .dx .dca-log-btn,.coin-popup .dx .dca-log-clear-btn{padding:3px 12px;min-height:28px}
+.coin-popup .chart-toggle-row{margin-top:6px}
+.cp-sheet .cp-grab{margin:5px auto 0}
+.cp-sheet .cp-header{padding-bottom:5px}
+.cp-sheet .cp-icon{width:32px;height:32px}
+.cp-sheet .cp-body{padding-bottom:2px}
 .dca-hist{display:flex;flex-direction:column;margin-top:5px}
 .dca-hist-row{display:flex;align-items:center;gap:8px;padding:3px 0;border-top:1px solid var(--border);font-family:var(--font-mono);font-size:10px;color:var(--muted)}
 .dca-hist-row .d{flex:1}
@@ -1545,54 +1566,66 @@ function classifyHolding(md, item, ta, macroTa) {
   const highDayK = highDaysAgoApprox ? refineExtremeDay(ta?.closes, effectiveHighDaysAgo, effectiveHigh) : effectiveHighDaysAgo;
   const lowRsi = rsiAtExtreme(liveRsiSeries, lowDayK, isLiveLow);
   const highRsi = rsiAtExtreme(liveRsiSeries, highDayK, isLiveHigh);
-  // RSI on the day a longer-window extreme was set. Wick-based dates are approximate, so snap to the
-  // nearest-priced close within ±4 days of the reported day.
-  const rsiNear = (daysAgo, price, live) => {
-    if (live) return rsiAtExtreme(liveRsiSeries, 0, true);
+  // ---- Single source of truth for window extremes and the RSI on their candle ----
+  // Every window (90d / 180d / 365d / all-time) picks its low and high from the same candidate list and
+  // gets its RSI from ONE routine, so the same extreme can never show two different RSI values, and
+  // the add/swing gates read these exact objects. A longer-window candidate only replaces a shorter
+  // one if it is genuinely more extreme (beyond data-source noise, EXTREME_TOL), never for a re-measure
+  // of the same candle.
+  const EXTREME_TOL = 5e-4;
+  const liveRsiNow = rsiAtExtreme(liveRsiSeries, 0, true);
+  const rsiOf = c => {
+    if (c.live) return liveRsiNow;
     const cl = ta?.closes;
-    if (daysAgo == null || price == null || !cl || !cl.length || daysAgo > cl.length + 4) return null;
+    if (c.k == null || !cl || !cl.length || c.k > cl.length) return null; // older than the data we hold
+    if (!c.approx) return rsiAtExtreme(liveRsiSeries, c.k, false);
+    // Wick extremes from multi-day OHLC candles only know the date to ±4 days: use the nearest-priced
+    // close that has an RSI value (RSI needs ~14 candles of warm-up).
     let bestK = null, bd = Infinity;
-    for (let k = Math.max(1, daysAgo - 4); k <= Math.min(cl.length, daysAgo + 4); k++) {
-      if (rsiAtExtreme(liveRsiSeries, k, false) == null) continue; // RSI needs ~14 candles of warm-up
-      const d = Math.abs(cl[cl.length - k] - price);
+    for (let k = Math.max(1, c.k - 4); k <= Math.min(cl.length, c.k + 4); k++) {
+      if (rsiAtExtreme(liveRsiSeries, k, false) == null) continue;
+      const d = Math.abs(cl[cl.length - k] - c.v);
       if (d < bd) { bd = d; bestK = k; }
     }
     return bestK == null ? null : rsiAtExtreme(liveRsiSeries, bestK, false);
   };
-  const winExt = N => {
+  const pickExtreme = (cands, isLow) => {
+    let best = null;
+    for (const c of cands) {
+      if (!c || c.v == null || isNaN(c.v)) continue;
+      if (!best || (isLow ? c.v < best.v * (1 - EXTREME_TOL) : c.v > best.v * (1 + EXTREME_TOL))) best = c;
+    }
+    return best && { ...best, rsi: best.rsi !== undefined ? best.rsi : rsiOf(best) };
+  };
+  // The 90d extreme is the authoritative candidate (its date/RSI are already resolved above).
+  const effLowC = effectiveLow != null ? { v: effectiveLow, k: lowDayK, live: isLiveLow, approx: false, tilde: lowDaysAgoApprox, rsi: lowRsi } : null;
+  const effHighC = effectiveHigh != null ? { v: effectiveHigh, k: highDayK, live: isLiveHigh, approx: false, tilde: highDaysAgoApprox, rsi: highRsi } : null;
+  const atlK = atlDate ? daysSince(atlDate) : null, athK = athDate ? daysSince(athDate) : null;
+  const atlC = atlValue != null && atlK != null ? { v: atlValue, k: isLiveAtl ? 0 : atlK, live: !!isLiveAtl, approx: false, tilde: false } : null;
+  const athC = athValue != null && athK != null ? { v: athValue, k: isLiveAth ? 0 : athK, live: !!isLiveAth, approx: false, tilde: false } : null;
+  const buildWin = N => {
     const cl = ta?.closes;
     if (!cl || !cl.length || cur == null) return null;
-    const w = cl.slice(-N);
-    const cLo = Math.min(...w), cHi = Math.max(...w);
-    const lows = [{ v: cLo, k: w.length - w.indexOf(cLo), live: false }];
-    const highs = [{ v: cHi, k: w.length - w.indexOf(cHi), live: false }];
-    if (effectiveLow != null) lows.push({ v: effectiveLow, k: lowDayK, live: isLiveLow });
-    if (effectiveHigh != null) highs.push({ v: effectiveHigh, k: highDayK, live: isLiveHigh });
-    if (yr && yr.lowDaysAgo != null && yr.lowDaysAgo <= N) lows.push({ v: yr.low, k: yr.lowDaysAgo, live: yr.lowDaysAgo === 0 });
-    if (yr && yr.highDaysAgo != null && yr.highDaysAgo <= N) highs.push({ v: yr.high, k: yr.highDaysAgo, live: yr.highDaysAgo === 0 });
-    const atlK = atlDate ? daysSince(atlDate) : null, athK = athDate ? daysSince(athDate) : null;
-    if (atlValue != null && atlK != null && atlK <= N) lows.push({ v: atlValue, k: isLiveAtl ? 0 : atlK, live: !!isLiveAtl });
-    if (athValue != null && athK != null && athK <= N) highs.push({ v: athValue, k: isLiveAth ? 0 : athK, live: !!isLiveAth });
-    const lo = lows.reduce((m, x) => x.v < m.v ? x : m), hi = highs.reduce((m, x) => x.v > m.v ? x : m);
-    return { n: w.length, lo: lo.v, hi: hi.v, loK: lo.k, hiK: hi.k, loLive: lo.live, hiLive: hi.live,
-      loRsi: rsiNear(lo.k, lo.v, lo.live), hiRsi: rsiNear(hi.k, hi.v, hi.live) };
+    const w = cl.slice(-N), cLo = Math.min(...w), cHi = Math.max(...w);
+    const yrLow = (yr && yr.lowDaysAgo != null && yr.lowDaysAgo <= N) ? { v: yr.low, k: yr.lowDaysAgo, live: yr.lowDaysAgo === 0, approx: !!yr.lowApprox, tilde: !!yr.lowApprox } : null;
+    const yrHigh = (yr && yr.highDaysAgo != null && yr.highDaysAgo <= N) ? { v: yr.high, k: yr.highDaysAgo, live: yr.highDaysAgo === 0, approx: !!yr.highApprox, tilde: !!yr.highApprox } : null;
+    return {
+      n: w.length,
+      lo: pickExtreme([effLowC, yrLow, atlK != null && atlK <= N ? atlC : null, { v: cLo, k: w.length - w.indexOf(cLo), live: false, approx: false, tilde: false }], true),
+      hi: pickExtreme([effHighC, yrHigh, athK != null && athK <= N ? athC : null, { v: cHi, k: w.length - w.indexOf(cHi), live: false, approx: false, tilde: false }], false)
+    };
   };
-  const win180 = winExt(180);
-  const low365Rsi = yr ? rsiNear(yr.lowDaysAgo, yr.low, yr.lowDaysAgo === 0) : null;
-  const high365Rsi = yr ? rsiNear(yr.highDaysAgo, yr.high, yr.highDaysAgo === 0) : null;
-  const atlD = isLiveAtl ? 0 : daysSince(atlDate), athD = isLiveAth ? 0 : daysSince(athDate);
-  const atlRsi = (atlD != null && atlD <= 360) ? rsiNear(atlD, atlValue, isLiveAtl) : null;
-  const athRsi = (athD != null && athD <= 360) ? rsiNear(athD, athValue, isLiveAth) : null;
-  // Gate references. Pick the shortest window whose extreme was set at an RSI that meets THIS coin's
-  // own threshold, using the exact same low/high + RSI the sliders display (so gate and sliders agree).
-  // If no window qualifies, fall back to the 90d extreme as before.
+  const win180 = buildWin(180);
+  const win365 = buildWin(YEAR_HIGH_DAYS);
+  // Gate references: the shortest window whose extreme was set at an RSI meeting THIS coin's own
+  // threshold; if none qualifies, the 90d extreme as before.
   const w90 = ta?.rollingLowWindowDays ?? DCA_DIP_WINDOW_DAYS;
   const osThrG = ta?.rsiOversoldThreshold ?? RSI_OVERSOLD, obThrG = ta?.rsiOverboughtThreshold ?? RSI_OVERBOUGHT;
   const lowCands = [], highCands = [];
-  if (effectiveLow != null) lowCands.push({ w: w90, v: effectiveLow, rsi: lowRsi });
-  if (effectiveHigh != null) highCands.push({ w: w90, v: effectiveHigh, rsi: highRsi });
-  if (win180 && win180.n > w90 + 5) { lowCands.push({ w: 180, v: win180.lo, rsi: win180.loRsi }); highCands.push({ w: 180, v: win180.hi, rsi: win180.hiRsi }); }
-  if (yr && yr.low != null && yr.high != null) { lowCands.push({ w: YEAR_HIGH_DAYS, v: yr.low, rsi: low365Rsi }); highCands.push({ w: YEAR_HIGH_DAYS, v: yr.high, rsi: high365Rsi }); }
+  if (effLowC) lowCands.push({ w: w90, v: effLowC.v, rsi: effLowC.rsi });
+  if (effHighC) highCands.push({ w: w90, v: effHighC.v, rsi: effHighC.rsi });
+  if (win180 && win180.n > w90 + 5) { if (win180.lo) lowCands.push({ w: 180, v: win180.lo.v, rsi: win180.lo.rsi }); if (win180.hi) highCands.push({ w: 180, v: win180.hi.v, rsi: win180.hi.rsi }); }
+  if (win365) { if (win365.lo) lowCands.push({ w: YEAR_HIGH_DAYS, v: win365.lo.v, rsi: win365.lo.rsi }); if (win365.hi) highCands.push({ w: YEAR_HIGH_DAYS, v: win365.hi.v, rsi: win365.hi.rsi }); }
   const qLow = lowCands.find(c => c.rsi != null && c.rsi <= osThrG) || lowCands[0] || null;
   const qHigh = highCands.find(c => c.rsi != null && c.rsi >= obThrG) || highCands[0] || null;
   const gateWindow = qLow ? qLow.w : w90, gateLow = qLow ? qLow.v : effectiveLow;
@@ -1600,6 +1633,7 @@ function classifyHolding(md, item, ta, macroTa) {
 
   const isDiscountCandidate = signal === 'WAIT';
   let dcaStreakDay = null;
+  let addReasonShown = false; // true when `reason` below was written by the add pipeline
   if (isDiscountCandidate) {
     const relStrength = relStrengthVsBtc;
     const relStrengthBonus = relStrength == null ? 0 : Math.max(REL_STRENGTH_MIN_BONUS, Math.min(REL_STRENGTH_MAX_BONUS, relStrength / REL_STRENGTH_SCALE));
@@ -1608,6 +1642,7 @@ function classifyHolding(md, item, ta, macroTa) {
       : ` ${relStrength > 0 ? 'Outperforming' : 'Underperforming'} BTC (${relStrength >= 0 ? '+' : ''}${relStrength.toFixed(1)}pp over ${REL_STRENGTH_WINDOW_DAYS}d) — ${relStrength > 0 ? 'capital may already be rotating in.' : 'weight this accordingly.'}`;
 
     if (ta && ta.rollingLow != null && cur != null) {
+      addReasonShown = true;
       const aboveLow = (cur - gateLow) / gateLow * 100;
       const nearLowThresholdPct = ta.nearLowThresholdPct ?? DCA_DIP_NEAR_PCT;
       const nearLow = aboveLow <= nearLowThresholdPct;
@@ -1661,6 +1696,12 @@ function classifyHolding(md, item, ta, macroTa) {
   // an ACCUMULATE, the ATH-tier TRIM, or a risk/liquidity call), a confirmed poke at the top of its
   // own recent range is a chance to bank a partial profit and rebuy lower — independent of whether
   // the user's own longer-term sell target has been reached.
+  // Which question applies to a WAIT coin — "should I add?" or "should I trim?" — is decided FIRST, from
+  // the plain 90d range: whichever extreme price is nearer to (as % of the current price). Only then are
+  // that question's gates (and its reasoning) evaluated against the RSI-qualified references.
+  const dToLow = (effectiveLow != null && cur) ? (cur - effectiveLow) / cur : null;
+  const dToHigh = (effectiveHigh != null && cur) ? (effectiveHigh - cur) / cur : null;
+  const lean = (dToLow != null && dToHigh != null && dToHigh < dToLow) ? 'swing' : 'add';
   let nearHigh = false;
   const swingHigh = gateHigh ?? effectiveHigh;
   if (effectiveHigh != null && cur != null && signal !== 'EXIT' && signal !== 'AT RISK' && signal !== 'ACCUMULATE' && signal !== 'TRIM') {
@@ -1675,6 +1716,12 @@ function classifyHolding(md, item, ta, macroTa) {
       strength = Math.max(strength, 50);
       const targetNote = item.target != null ? ` Still well short of your ₹${item.target} target, so this is a partial-profit/rebuy-lower play, not an exit.` : '';
       reason = `${belowHighPct.toFixed(1)}% below its ${windowLabel}d high (within its own ≤${nearHighThresholdPct.toFixed(1)}% band), RSI ${liveRsi.toFixed(2)} (overbought vs this coin's own ≥${rsiOverboughtThreshold.toFixed(0)} top zone) — a reasonable spot to trim into strength.${targetNote}`;
+    } else if (lean === 'swing' && addReasonShown && signal === 'WAIT') {
+      // The coin is nearer its range top than its range low, so explain the trim question, not the add one.
+      const lead = `${belowHighPct.toFixed(1)}% below its ${windowLabel}d high`;
+      reason = nearHigh
+        ? `${lead} (within this coin's own ≤${nearHighThresholdPct.toFixed(1)}% band), but RSI (${liveRsi == null ? '—' : liveRsi.toFixed(2)}) hasn't reached this coin's own overbought zone (≥${rsiOverboughtThreshold.toFixed(0)}) yet.`
+        : `${lead} — outside this coin's own ≤${nearHighThresholdPct.toFixed(1)}% near-high band, and RSI (${liveRsi == null ? '—' : liveRsi.toFixed(2)}) is below this coin's own overbought zone (≥${rsiOverboughtThreshold.toFixed(0)}).`;
     } else if (nearHigh) {
       reason = `${reason} Also ${belowHighPct.toFixed(1)}% below its ${windowLabel}d high, but RSI (${liveRsi == null ? '—' : liveRsi.toFixed(2)}) hasn't reached this coin's own overbought zone (≥${rsiOverboughtThreshold.toFixed(0)}) yet.`;
     }
@@ -1715,11 +1762,12 @@ function classifyHolding(md, item, ta, macroTa) {
     effectiveLowDaysAgo: lowDayK,
     lowDaysAgoApprox,
     lowRsi,
-    win180, low365Rsi, high365Rsi, atlRsi, athRsi,
+    win180, win365,
     isLiveLow,
     rollingHigh: ta?.rollingHigh ?? null,
     effectiveHigh,
     gateHigh,
+    lean,
     gateHighWindow,
     effectiveHighDaysAgo: highDayK,
     highDaysAgoApprox,
@@ -2727,7 +2775,7 @@ function expandRowCore(tr, item, forceReExpand) {
   else if (ta.signal === 'SWING TRIM') fam = 'swing';
   else if (ta.signal === 'ACCUMULATE') fam = 'add';
   else if (ta.signal === 'HOLD') fam = 'hold';
-  else fam = (gBelow != null && gAbove != null && gBelow < gAbove) ? 'swing' : 'add';
+  else fam = ta.lean === 'swing' ? 'swing' : 'add';
 
   let head = '', gates = '';
   if (fam === 'safe') {
@@ -2775,13 +2823,13 @@ function expandRowCore(tr, item, forceReExpand) {
 
   const rng = (name, lo, hi, o) => {
     if (lo == null || hi == null || cmp == null || !(hi > lo) || (o.log && !(lo > 0))) {
-      return `<div class="dx-rng"><b>${name}</b><span style="grid-column:2/-1">—</span></div>`;
+      return `<div class="dx-blk"><div class="dx-rng"><b>${name}</b><span style="grid-column:2/-1">—</span></div></div>`;
     }
     let z = o.log ? (Math.log(cmp) - Math.log(lo)) / (Math.log(hi) - Math.log(lo)) : (cmp - lo) / (hi - lo);
     z = Math.max(0, Math.min(1, z)) * 100;
     const op = o.open != null ? Math.max(0, Math.min(100, (o.open - lo) / (hi - lo) * 100)) : null;
-    return `<div class="dx-rng"><b>${name}</b><span>${fmt(lo)}</span><div class="dx-bar">${op != null ? `<span class="o" style="left:${op}%"></span>` : ''}<span class="m" style="left:${z}%"></span></div><span>${fmt(hi)}</span></div>
-      <div class="dx-met"><div>${o.l}</div><div>${o.r}</div></div>${o.extra ? `<div class="dx-sub">${o.extra}</div>` : ''}`;
+    return `<div class="dx-blk"><div class="dx-rng"><b>${name}</b><span>${fmt(lo)}</span><div class="dx-bar" style="--mid:${op != null ? op : 50}%"><span class="m" style="left:${z}%"></span></div><span>${fmt(hi)}</span></div>
+      <div class="dx-met"><div>${o.l}</div><div>${o.r}</div></div>${o.extra ? `<div class="dx-sub">${o.extra}</div>` : ''}</div>`;
   };
   const dTxt = (live, approx, d) => live ? 'today⚡' : (d == null ? '—' : (approx ? '~' : '') + d + 'd');
   const D = '<i class="dt">·</i>';
@@ -2794,27 +2842,24 @@ function expandRowCore(tr, item, forceReExpand) {
         l: `<b>${sgn((cmp - barLow) / barLow * 100)}</b>${D}open ${fmt(dayC.open)}`,
         r: `<b>${sgn(-(barHigh - cmp) / barHigh * 100)}</b>${D}${new Date(dayC.fetchedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
       })
-    : `<div class="dx-rng"><b>Today</b><span style="grid-column:2/-1;font-family:var(--font-ui)">${dayC ? 'Range unavailable — CoinGecko is missing a candle' : candleMsg}</span></div>`;
+    : `<div class="dx-blk"><div class="dx-rng"><b>Today</b><span style="grid-column:2/-1;font-family:var(--font-ui)">${dayC ? 'Range unavailable — CoinGecko is missing a candle' : candleMsg}</span></div></div>`;
   const d90Html = rng(`${wd} days${ta.rollingExtremesSource === 'closes' ? ' ≈' : ''}`, ta.effectiveLow, ta.effectiveHigh, {
     l: `<b>${sgn(aboveLow)}</b>${D}${dTxt(ta.isLiveLow, ta.lowDaysAgoApprox, ta.effectiveLowDaysAgo)}${rsiTxt(ta.lowRsi, ta.lowDaysAgoApprox)}`,
     r: `<b>${sgn(belowHigh == null ? null : -belowHigh)}</b>${D}${dTxt(ta.isLiveHigh, ta.highDaysAgoApprox, ta.effectiveHighDaysAgo)}${rsiTxt(ta.highRsi, ta.highDaysAgoApprox)}`
   });
-  const w180 = ta.win180;
-  const d180Html = (w180 && w180.n > wd + 5) ? rng('180 days', w180.lo, w180.hi, {
-    l: `<b>${sgn((cmp - w180.lo) / w180.lo * 100)}</b>${D}${dTxt(w180.loLive, false, w180.loK)}${rsiTxtN(w180.loRsi, false)}`,
-    r: `<b>${sgn(-(w180.hi - cmp) / w180.hi * 100)}</b>${D}${dTxt(w180.hiLive, false, w180.hiK)}${rsiTxtN(w180.hiRsi, false)}`
+  const winRow = (label, w) => (w && w.lo && w.hi) ? rng(label, w.lo.v, w.hi.v, {
+    l: `<b>${sgn((cmp - w.lo.v) / w.lo.v * 100)}</b>${D}${dTxt(w.lo.live, w.lo.tilde, w.lo.k)}${rsiTxtN(w.lo.rsi, w.lo.tilde)}`,
+    r: `<b>${sgn(-(w.hi.v - cmp) / w.hi.v * 100)}</b>${D}${dTxt(w.hi.live, w.hi.tilde, w.hi.k)}${rsiTxtN(w.hi.rsi, w.hi.tilde)}`
   }) : '';
-  const yrHtml = rng(YEAR_HIGH_DAYS === 365 ? '1 year' : `${YEAR_HIGH_DAYS} days`, ta.low365, ta.high365, {
-    l: `<b>${sgn(ta.above365Low)}</b>${D}${ta.low365DaysAgo === 0 ? 'today' : (ta.low365Approx ? '~' : '') + (ta.low365DaysAgo ?? '—') + 'd'}${rsiTxtN(ta.low365Rsi, ta.low365Approx)}`,
-    r: `<b>${sgn(ta.drawdown365)}</b>${D}${ta.high365DaysAgo === 0 ? 'today' : (ta.high365Approx ? '~' : '') + (ta.high365DaysAgo ?? '—') + 'd'}${rsiTxtN(ta.high365Rsi, ta.high365Approx)}`
-  });
+  const d180Html = (ta.win180 && ta.win180.n > wd + 5) ? winRow('180 days', ta.win180) : '';
+  const yrHtml = winRow(`${YEAR_HIGH_DAYS} days`, ta.win365);
   const athDays = ta.isLiveAth ? 0 : daysSince(ta.athDate);
   const atlDays = ta.isLiveAtl ? 0 : daysSince(ta.atlDate);
   const pctAboveAtl = (cmp != null && ta.atlValue != null && ta.atlValue !== 0) ? ((cmp - ta.atlValue) / ta.atlValue * 100) : null;
   const allHtml = rng('All time', ta.atlValue, ta.athValue, {
     log: true,
-    l: `<b>${sgn(pctAboveAtl)}</b>${D}${ta.isLiveAtl ? 'today⚡' : (atlDays == null ? '—' : atlDays + 'd')}${rsiTxtN(ta.atlRsi, false)}`,
-    r: `<b>${sgn(ta.athPct)}</b>${D}${ta.isLiveAth ? 'today⚡' : (athDays == null ? '—' : athDays + 'd')}${rsiTxtN(ta.athRsi, false)}`
+    l: `<b>${sgn(pctAboveAtl)}</b>${D}${ta.isLiveAtl ? 'today⚡' : (atlDays == null ? '—' : atlDays + 'd')}`,
+    r: `<b>${sgn(ta.athPct)}</b>${D}${ta.isLiveAth ? 'today⚡' : (athDays == null ? '—' : athDays + 'd')}`
   });
   // Rolling 24h range (CoinGecko). The live price can only widen it (it is a real observed price).
   const rollChg = getRollingChangePct(item.id);
