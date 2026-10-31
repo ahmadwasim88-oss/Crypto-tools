@@ -1111,12 +1111,13 @@ function getRollingChangePct(id) {
   const v = marketDataCache[id]?.change_24h;
   return (v != null && isFinite(v)) ? v : null;
 }
-// What the table shows/sorts by: today's candle move if available, else the tagged rolling 24h.
+// What the table shows/sorts by: the rolling 24h % (same figure exchanges show in their price column),
+// falling back to today's UTC-candle move (tagged 'today') only if the 24h figure is unavailable.
 function getDisplayChange(id) {
-  const t = getTodayChangePct(id);
-  if (t != null) return { pct: t, rolling: false };
   const r = getRollingChangePct(id);
-  return r != null ? { pct: r, rolling: true } : null;
+  if (r != null) return { pct: r, rolling: true };
+  const t = getTodayChangePct(id);
+  return t != null ? { pct: t, rolling: false } : null;
 }
 
 async function fetchTaHistory(id) {
@@ -2166,8 +2167,8 @@ function priceCellHTML(id, cur) {
   if (!cur) return '<span class="gain-na">—</span>';
   const chg = getDisplayChange(id);
   const chgHtml = chg == null ? '' : chg.rolling
-    ? `<span class="price-change-24h chg-roll" title="Rolling 24h (today's candle not available yet)">${formatPct(chg.pct)} <em>24h</em></span>`
-    : `<span class="price-change-24h ${chg.pct >= 0 ? 'gain-pos' : 'gain-neg'}" title="Today's UTC candle">${formatPct(chg.pct)}</span>`;
+    ? `<span class="price-change-24h ${chg.pct >= 0 ? 'gain-pos' : 'gain-neg'}" title="Rolling 24h change (same as exchanges)">${formatPct(chg.pct)}</span>`
+    : `<span class="price-change-24h chg-roll" title="24h figure unavailable - showing today's UTC candle move">${formatPct(chg.pct)} <em>today</em></span>`;
   return `<span class="px-main">${formatINR(cur, pricePrecisionFor(cur), true)}</span>${chgHtml}`;
 }
 
