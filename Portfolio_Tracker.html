@@ -2078,7 +2078,7 @@ async function logDcaLevel(id, symbol) {
   setDcaHistory(id, dcaHistoryOf(id).concat({ price: entry.price, dateStr: entry.dateStr, timestamp: Date.now() }));
   saveDcaLog();
   recomputeHoldingSignals();
-  renderTable();
+  applyCurrentSort();
 }
 
 async function removeDcaEntry(id, symbol, ts) {
@@ -2093,7 +2093,7 @@ async function removeDcaEntry(id, symbol, ts) {
   setDcaHistory(id, dcaHistoryOf(id).filter(h => h.timestamp !== ts));   // re-read: the log may have changed meanwhile
   saveDcaLog();
   recomputeHoldingSignals();
-  renderTable();
+  applyCurrentSort();
 }
 
 async function clearDcaLevel(id, symbol) {
@@ -2106,7 +2106,7 @@ async function clearDcaLevel(id, symbol) {
   delete dcaLogCache[id];
   saveDcaLog();
   recomputeHoldingSignals();
-  renderTable();
+  applyCurrentSort();
 }
 
 let tvScriptPromise = null;
@@ -2206,7 +2206,7 @@ function beginTargetEdit(span) {
       saveHoldingSignals();
       setActivityStatus(`Target updated for ${item.symbol}.`, 'info');
       updatePricesInTable();
-      if (currentSortColumn === 'gain' || currentSortColumn === 'signal') applyCurrentSort();
+      if (sortOrderIsStale()) applyCurrentSort();
     }
     const freshSpan = document.createElement('span');
     freshSpan.className = item.target == null ? 'target-display target-unset' : 'target-display';
@@ -2646,7 +2646,6 @@ function renderTable() {
 }
 
 function updatePricesInTable() {
-  let shouldReSort = false;
   document.querySelectorAll('.price-cell').forEach(priceCell => {
     const id = priceCell.dataset.id;
     const item = portfolioMap[id];
@@ -2662,10 +2661,7 @@ function updatePricesInTable() {
     if (gainCell) {
       gainCell.textContent = formatPctShort(gain);
       gainCell.className = `numeric gain-cell ${gain == null ? 'gain-na' : gain >= 0 ? 'gain-pos' : 'gain-neg'}`;
-      const oldGain = parseFloat(row.dataset.gain) || 0;
-      const newGain = gain ?? 0;
-      if (currentSortColumn === 'gain' && Math.abs(oldGain - newGain) > 0.1) shouldReSort = true;
-      row.dataset.gain = newGain;
+      row.dataset.gain = gain ?? 0;
     }
 
     const signalCell = row.querySelector('.signal-cell');
@@ -2674,7 +2670,7 @@ function updatePricesInTable() {
       signalCell.innerHTML = html;
     }
   });
-  if (shouldReSort) applyCurrentSort();
+  if (!document.querySelector('.target-input') && sortOrderIsStale()) applyCurrentSort();
   else if (expandedRowId) {
     const activeChart = document.getElementById(`chart-container-${expandedRowId}`);
     const chartIsOpen = activeChart && activeChart.dataset.loaded === 'true' && activeChart.style.display === 'block';
@@ -2923,6 +2919,31 @@ function expandRowCore(tr, item, forceReExpand) {
   return false;
 }
 
+function sortValueOf(item) {
+  if (currentSortColumn === 'gain') {
+    const pct = pctToTarget(pricesCache[item.id], item.target);
+    return pct == null ? -999999 : pct;
+  }
+  if (currentSortColumn === 'change24h') {
+    const chg = getDisplayChange(item.id);
+    return chg == null ? -999999 : chg.pct;
+  }
+  return holdingSignalCache[item.id]?.strength || 0;
+}
+
+function compareBySortColumn(a, b) {
+  const valA = sortValueOf(a), valB = sortValueOf(b);
+  if (valA < valB) return sortDir === 'desc' ? 1 : -1;
+  if (valA > valB) return sortDir === 'desc' ? -1 : 1;
+  return 0;
+}
+
+// True when the rows on screen are no longer in the order the active sort column would give.
+function sortOrderIsStale() {
+  const wanted = saved.slice().sort(compareBySortColumn);
+  return wanted.some((item, i) => item.id !== saved[i].id);
+}
+
 function applyCurrentSort() {
   gainSortArrow.textContent = '';
   signalSortArrow.textContent = '';
@@ -2931,26 +2952,7 @@ function applyCurrentSort() {
   else if (currentSortColumn === 'signal') signalSortArrow.textContent = sortDir === 'desc' ? '▼' : '▲';
   else if (currentSortColumn === 'change24h') priceSortArrow.textContent = sortDir === 'desc' ? '▼' : '▲';
 
-  saved.sort((a, b) => {
-    let valA, valB;
-    if (currentSortColumn === 'gain') {
-      const pctA = pctToTarget(pricesCache[a.id], a.target);
-      const pctB = pctToTarget(pricesCache[b.id], b.target);
-      valA = pctA == null ? -999999 : pctA;
-      valB = pctB == null ? -999999 : pctB;
-    } else if (currentSortColumn === 'change24h') {
-      const chgA = getDisplayChange(a.id);
-      const chgB = getDisplayChange(b.id);
-      valA = chgA == null ? -999999 : chgA.pct;
-      valB = chgB == null ? -999999 : chgB.pct;
-    } else {
-      valA = holdingSignalCache[a.id]?.strength || 0;
-      valB = holdingSignalCache[b.id]?.strength || 0;
-    }
-    if (valA < valB) return sortDir === 'desc' ? 1 : -1;
-    if (valA > valB) return sortDir === 'desc' ? -1 : 1;
-    return 0;
-  });
+  saved.sort(compareBySortColumn);
   renderTable();
 }
 
