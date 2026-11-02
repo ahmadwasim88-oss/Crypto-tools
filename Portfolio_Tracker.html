@@ -699,6 +699,23 @@ const ATH_TIER_ABS_CEIL_PCT = -12;  // watch tier shouldn't fire this close to A
 // the Discover scan, which has no hourly wick data.
 const REF_LOW_WINDOWS = [90, 180, 365];
 const REF_LOW_RSI_MARGIN = 0; // Discover scan only: strict, no tolerance
+// Shared by the holdings gate and the Discover scan so both pick the same reference window.
+// cands are ordered shortest window first: [{ w, rsi, ... }]. Returns the shortest window whose extreme
+// was set at a qualifying RSI (isLow: <= thr, else >= thr); if none qualifies, the window whose extreme
+// came closest to qualifying (lowest RSI for a low / highest for a high, ties to the shorter window);
+// if no candidate has an RSI, the first one. Never loosens the threshold.
+function pickRefWindow(cands, thr, isLow) {
+  const list = (cands || []).filter(Boolean);
+  const hit = list.find(c => c.rsi != null && !isNaN(c.rsi) && (isLow ? c.rsi <= thr : c.rsi >= thr));
+  if (hit) return { ...hit, qualified: true };
+  let best = null;
+  for (const c of list) {
+    if (c.rsi == null || isNaN(c.rsi)) continue;
+    if (!best || (isLow ? c.rsi < best.rsi : c.rsi > best.rsi)) best = c;
+  }
+  const pick = best || list[0] || null;
+  return pick && { ...pick, qualified: false };
+}
 const DCA_NEAR_LOW_MULT = 1.0;
 const DCA_NEAR_LOW_FLOOR_PCT = 1.5;
 const DCA_NEAR_LOW_CEIL_PCT = 8;
@@ -747,7 +764,7 @@ const DISCOVER_MAX_TA_FETCHES = 25;
 
 const EMA_TREND_LONG = 200;
 
-const TA_LOGIC_VERSION = 22; // 22: add/swing gates use an RSI-qualified low/high (90→180→365d); earlier: ACCUMULATE RSI tightened (10th pct, ceiling 35) + last closed-day RSI must be oversold; overbought band 80-92 (97th pct)
+const TA_LOGIC_VERSION = 23; // 23: holdings gate + Discover share pickRefWindow (qualified window, else closest-to-oversold); 22: add/swing gates use an RSI-qualified low/high (90→180→365d); earlier: ACCUMULATE RSI tightened (10th pct, ceiling 35) + last closed-day RSI must be oversold; overbought band 80-92 (97th pct)
 const TA_FETCH_VERSION = 7; // bumped: 90d extremes now from hourly data (exact window) + in-window OHLC wicks; 365d extremes from OHLC wicks
 
 let saved             = JSON.parse(localStorage.getItem('shortfall_portfolio') || '[]');
@@ -970,19 +987,18 @@ function computeTaFromCloses(closes) {
     const pHigh = percentileOf(sortedRsiHigh, RSI_OVERBOUGHT_PERCENTILE);
     if (pHigh != null) rsiOverboughtThreshold = Math.min(RSI_OVERBOUGHT_CEIL, Math.max(RSI_OVERBOUGHT_FLOOR, pHigh));
   }
-  // Shortest window whose low was set while RSI was genuinely oversold; falls back to 90d (unqualified).
-  let refLow = null;
+  // Shortest window whose low was set while RSI was genuinely oversold; otherwise the window whose low
+  // came closest to oversold (see pickRefWindow).
+  const refCands = [];
   for (const N of REF_LOW_WINDOWS) {
     const w = closes.slice(-N);
     if (!w.length) continue;
     const lo = Math.min(...w);
     const idx = closes.length - w.length + w.indexOf(lo);
     const r = rsiSeries[idx];
-    const ok = r != null && !isNaN(r) && r <= rsiOversoldThreshold + REF_LOW_RSI_MARGIN;
-    const cand = { val: lo, window: w.length, daysAgo: closes.length - idx, rsi: (r != null && !isNaN(r)) ? r : null, qualified: ok };
-    if (!refLow) refLow = cand;
-    if (ok) { refLow = cand; break; }
+    refCands.push({ val: lo, window: w.length, w: w.length, daysAgo: closes.length - idx, rsi: (r != null && !isNaN(r)) ? r : null });
   }
+  const refLow = pickRefWindow(refCands, rsiOversoldThreshold + REF_LOW_RSI_MARGIN, true);
   const avgDailyMove = calcAvgDailyMovePct(closes, DCA_VOL_LOOKBACK_DAYS);
   const volScale = avgDailyMove != null
     ? Math.max(VOL_SCALE_MIN, Math.min(VOL_SCALE_MAX, avgDailyMove / VOL_SCALE_REF_PCT))
@@ -1619,7 +1635,7 @@ function classifyHolding(md, item, ta, macroTa) {
   const win180 = buildWin(180);
   const win365 = buildWin(YEAR_HIGH_DAYS);
   // Gate references: the shortest window whose extreme was set at an RSI meeting THIS coin's own
-  // threshold; if none qualifies, the 90d extreme as before.
+  // threshold; if none qualifies, the window whose extreme is closest to qualifying (RSI-wise).
   const w90 = ta?.rollingLowWindowDays ?? DCA_DIP_WINDOW_DAYS;
   const osThrG = ta?.rsiOversoldThreshold ?? RSI_OVERSOLD, obThrG = ta?.rsiOverboughtThreshold ?? RSI_OVERBOUGHT;
   const lowCands = [], highCands = [];
@@ -1627,8 +1643,8 @@ function classifyHolding(md, item, ta, macroTa) {
   if (effHighC) highCands.push({ w: w90, v: effHighC.v, rsi: effHighC.rsi });
   if (win180 && win180.n > w90 + 5) { if (win180.lo) lowCands.push({ w: 180, v: win180.lo.v, rsi: win180.lo.rsi }); if (win180.hi) highCands.push({ w: 180, v: win180.hi.v, rsi: win180.hi.rsi }); }
   if (win365) { if (win365.lo) lowCands.push({ w: YEAR_HIGH_DAYS, v: win365.lo.v, rsi: win365.lo.rsi }); if (win365.hi) highCands.push({ w: YEAR_HIGH_DAYS, v: win365.hi.v, rsi: win365.hi.rsi }); }
-  const qLow = lowCands.find(c => c.rsi != null && c.rsi <= osThrG) || lowCands[0] || null;
-  const qHigh = highCands.find(c => c.rsi != null && c.rsi >= obThrG) || highCands[0] || null;
+  const qLow = pickRefWindow(lowCands, osThrG + REF_LOW_RSI_MARGIN, true);
+  const qHigh = pickRefWindow(highCands, obThrG, false);
   const gateWindow = qLow ? qLow.w : w90, gateLow = qLow ? qLow.v : effectiveLow;
   const gateHighWindow = qHigh ? qHigh.w : w90, gateHigh = qHigh ? qHigh.v : effectiveHigh;
 
