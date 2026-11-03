@@ -767,14 +767,25 @@ const EMA_TREND_LONG = 200;
 const TA_LOGIC_VERSION = 23; // 23: holdings gate + Discover share pickRefWindow (qualified window, else closest-to-oversold); 22: add/swing gates use an RSI-qualified low/high (90→180→365d); earlier: ACCUMULATE RSI tightened (10th pct, ceiling 35) + last closed-day RSI must be oversold; overbought band 80-92 (97th pct)
 const TA_FETCH_VERSION = 7; // bumped: 90d extremes now from hourly data (exact window) + in-window OHLC wicks; 365d extremes from OHLC wicks
 
-let saved             = JSON.parse(localStorage.getItem('shortfall_portfolio') || '[]');
-let pricesCache       = JSON.parse(localStorage.getItem('shortfall_prices') || '{}');
-let marketDataCache   = JSON.parse(localStorage.getItem('shortfall_market_data') || '{}');
-let holdingSignalCache = JSON.parse(localStorage.getItem('shortfall_holding_signals') || '{}');
-let dcaLogCache = JSON.parse(localStorage.getItem('shortfall_dca_log') || '{}');
+// Corrupt or missing storage must never stop the page from starting: fall back to an empty value instead of throwing.
+const loadJSON = (key, fallback) => {
+  try {
+    const v = JSON.parse(localStorage.getItem(key) || 'null');
+    return (v !== null && typeof v === 'object' && Array.isArray(v) === Array.isArray(fallback)) ? v : fallback;
+  } catch (e) { return fallback; }
+};
+// Quota / private-mode failures must not abort the calling flow mid-way.
+const lsSet = (key, val) => { try { localStorage.setItem(key, val); } catch (e) {} };
+const escHtml = (t) => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+let saved             = loadJSON('shortfall_portfolio', []);
+let pricesCache       = loadJSON('shortfall_prices', {});
+let marketDataCache   = loadJSON('shortfall_market_data', {});
+let holdingSignalCache = loadJSON('shortfall_holding_signals', {});
+let dcaLogCache = loadJSON('shortfall_dca_log', {});
 const DCA_HISTORY_MAX = 50; // log entries kept per coin (the newest-dated one is the gap-check anchor)
-let taCache            = JSON.parse(localStorage.getItem('shortfall_ta_data') || '{}');
-let dayCandleCache     = JSON.parse(localStorage.getItem('shortfall_day_candle') || '{}');
+let taCache            = loadJSON('shortfall_ta_data', {});
+let dayCandleCache     = loadJSON('shortfall_day_candle', {});
 
 let coinList = [];
 let symbolIndex = {};
@@ -830,13 +841,13 @@ const pctToTarget = (cur, tgt) => {
 const formatPctShort = (val) => (val == null || isNaN(val)) ? '—' : (Math.abs(val) >= 100 ? `${val > 0 ? '+' : val < 0 ? '−' : ''}${Math.abs(val).toLocaleString('en-IN', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%` : `${val > 0 ? '+' : val < 0 ? '−' : ''}${Math.abs(val).toFixed(1)}%`);
 const formatPct = (val) => (val == null || isNaN(val)) ? 'N/A' : `${val > 0 ? '+' : ''}${val.toFixed(2)}%`;
 
-const save                 = () => localStorage.setItem('shortfall_portfolio', JSON.stringify(saved));
-const savePrices           = () => localStorage.setItem('shortfall_prices', JSON.stringify(pricesCache));
-const saveMarketData       = () => localStorage.setItem('shortfall_market_data', JSON.stringify(marketDataCache));
-const saveHoldingSignals   = () => localStorage.setItem('shortfall_holding_signals', JSON.stringify(holdingSignalCache));
-const saveDcaLog           = () => localStorage.setItem('shortfall_dca_log', JSON.stringify(dcaLogCache));
-const saveDayCandles       = () => localStorage.setItem('shortfall_day_candle', JSON.stringify(dayCandleCache));
-const saveTaData           = () => localStorage.setItem('shortfall_ta_data', JSON.stringify(taCache));
+const save                 = () => lsSet('shortfall_portfolio', JSON.stringify(saved));
+const savePrices           = () => lsSet('shortfall_prices', JSON.stringify(pricesCache));
+const saveMarketData       = () => lsSet('shortfall_market_data', JSON.stringify(marketDataCache));
+const saveHoldingSignals   = () => lsSet('shortfall_holding_signals', JSON.stringify(holdingSignalCache));
+const saveDcaLog           = () => lsSet('shortfall_dca_log', JSON.stringify(dcaLogCache));
+const saveDayCandles       = () => lsSet('shortfall_day_candle', JSON.stringify(dayCandleCache));
+const saveTaData           = () => lsSet('shortfall_ta_data', JSON.stringify(taCache));
 
 function buildPortfolioMap() {
   portfolioMap = {};
@@ -1297,6 +1308,7 @@ async function fetchTaForPortfolio(ids, { force = false } = {}) {
   });
   if (!stale.length || taFetchInFlight) return;
   taFetchInFlight = true;
+  try {
   let updated = 0, auditFailures = 0, staleFeeds = 0;
   for (const id of stale) {
     const closes = await fetchTaHistory(id);
@@ -1343,13 +1355,17 @@ async function fetchTaForPortfolio(ids, { force = false } = {}) {
   saveTaData();
   if (updated > 0) {
     lastTaTime = Date.now();
-    localStorage.setItem('shortfall_ta_time', lastTaTime);
+    lsSet('shortfall_ta_time', lastTaTime);
     recomputeHoldingSignals();
     updatePricesInTable();
     updateScheduledStatus();
   }
   setActivityStatus(`TA history updated (${updated}/${stale.length}).${auditFailures ? ` ${auditFailures} discarded on audit failure.` : ''}${staleFeeds ? ` ${staleFeeds} discarded as stale (history ended >3d ago).` : ''}`, updated > 0 ? 'ok' : 'warn');
-  taFetchInFlight = false;
+  } catch (err) {
+    setActivityStatus('TA refresh hit an unexpected error — will retry on the next cycle.', 'warn');
+  } finally {
+    taFetchInFlight = false;
+  }
 }
 
 
@@ -1869,7 +1885,7 @@ async function loadCoinList(isApiReachable) {
     if (!res.ok) throw new Error(`HTTP_ERROR:${res.status}`);
     coinList = await res.json() || [];
     buildIndex(coinList);
-    localStorage.setItem(CACHE_KEY, JSON.stringify({ list: coinList, timestamp: Date.now() }));
+    lsSet(CACHE_KEY, JSON.stringify({ list: coinList, timestamp: Date.now() }));
     coinListLoaded = true;
     addBtn.disabled = true;
     symbolInput.placeholder = 'Type a coin symbol or name to add it…';
@@ -1942,7 +1958,7 @@ async function fetchPrices(ids) {
   saveMarketData();
   if (updated > 0) {
     lastPriceTime = Date.now();
-    localStorage.setItem('shortfall_prices_time', lastPriceTime);
+    lsSet('shortfall_prices_time', lastPriceTime);
     savePrices();
     updateScheduledStatus();
   }
@@ -2047,8 +2063,13 @@ function signalCellHTML(id) {
   return { html };
 }
 
-function removeCoin(id, symbol) {
-  if (!confirm(`Remove ${symbol} from your portfolio?`)) return;
+async function removeCoin(id, symbol) {
+  const ok = await confirmDialog({
+    title: `Remove ${symbol}?`,
+    message: 'It will be removed from your portfolio along with its saved DCA log.',
+    okLabel: 'Remove', danger: true
+  });
+  if (!ok || !saved.some(s => s.id === id)) return;
   saved = saved.filter(s => s.id !== id);
   save();
   buildPortfolioMap();
@@ -2057,6 +2078,8 @@ function removeCoin(id, symbol) {
   delete holdingSignalCache[id];
   delete taCache[id];
   delete dcaLogCache[id];
+  delete dayCandleCache[id];
+  saveDayCandles();
   savePrices();
   saveMarketData();
   saveHoldingSignals();
@@ -2250,6 +2273,41 @@ document.addEventListener('click', (e) => {
 // session; opening, refreshing, swiping to another coin and closing only re-render its header/body,
 // so nothing is ever created twice and no listener is ever added twice. The popup's buttons use one
 // delegated listener on its body, so they keep working across re-renders.
+// ===== Back-button integration ======================================================================
+// Each open overlay (coin popup, DCA/confirm dialog) owns one history entry, so the device Back button / swipe-back
+// closes the topmost overlay instead of leaving the page. Closing by ✕ / backdrop / Esc / swipe-down removes that
+// entry again. `pushed` mirrors how many of our entries are on the stack; history.state.cpLayer is the source of truth.
+const navHist = { pushed: 0, busy: false, timer: null };
+function openLayerCount() { return (coinPopupOpen ? 1 : 0) + (dlgOpen ? 1 : 0); }
+function syncNavHistory() {
+  if (navHist.busy) return;                       // a programmatic traversal is in flight; popstate re-syncs afterwards
+  const want = openLayerCount();
+  try {
+    while (navHist.pushed < want) { history.pushState({ cpLayer: navHist.pushed + 1 }, ''); navHist.pushed++; }
+    if (navHist.pushed > want) {
+      navHist.busy = true;
+      clearTimeout(navHist.timer);
+      navHist.timer = setTimeout(() => {          // safety net if the browser never reports the traversal
+        navHist.busy = false;
+        navHist.pushed = (history.state && history.state.cpLayer) || 0;
+        syncNavHistory();
+      }, 800);
+      history.go(-(navHist.pushed - want));
+    }
+  } catch (e) { navHist.busy = false; }
+}
+window.addEventListener('popstate', () => {
+  navHist.pushed = (history.state && history.state.cpLayer) || 0;
+  if (navHist.busy) { navHist.busy = false; clearTimeout(navHist.timer); syncNavHistory(); return; }
+  while (openLayerCount() > navHist.pushed) {     // user pressed Back: close the topmost overlay
+    if (dlgOpen) closeDialog(null);
+    else if (coinPopupOpen) closeCoinPopup();
+    else break;
+  }
+  syncNavHistory();
+});
+try { if (history.state && history.state.cpLayer) history.replaceState(null, ''); } catch (e) {}
+
 function lockPageScroll() {
   if (popupScrollLocked) return;
   // On desktop, hiding the scrollbar would widen the page and nudge the layout; pad by its width.
@@ -2276,6 +2334,7 @@ function openCoinPopupShell() {
   popupLastFocus = document.activeElement;
   coinPopupOpen = true;
   popupBackdropDown = false;
+  syncNavHistory();
   lockPageScroll();
   appRoot.inert = true;                       // keeps focus and taps out of the page behind the popup
   popupOverlay.setAttribute('aria-hidden', 'false');
@@ -2299,6 +2358,7 @@ function closeCoinPopup() {
   popupOverlay.setAttribute('aria-hidden', 'true');
   appRoot.inert = false;
   unlockPageScroll();
+  syncNavHistory();
   const back = popupLastFocus;
   popupLastFocus = null;
   if (back && back.isConnected && typeof back.focus === 'function' && back !== document.body) back.focus({ preventScroll: true });
@@ -2389,6 +2449,7 @@ function openDialog({ title, sub = '', bodyHtml = '', okLabel = 'Save', danger =
   clearTimeout(dlgCloseTimer);
   return new Promise((resolve) => {
     dlgOpen = true; dlgDone = resolve; dlgValidate = validate; dlgBackdropDown = false;
+    syncNavHistory();
     dlgLastFocus = document.activeElement;
     dlgTitle.textContent = title;
     dlgSub.textContent = sub; dlgSub.hidden = !sub;
@@ -2407,6 +2468,7 @@ function closeDialog(result) {
   if (!dlgOpen) return;
   const done = dlgDone, back = dlgLastFocus;
   dlgOpen = false; dlgDone = null; dlgValidate = null; dlgLastFocus = null;
+  syncNavHistory();
   dlgOverlay.classList.remove('open');
   dlgOverlay.setAttribute('aria-hidden', 'true');
   popupOverlay.inert = false;
@@ -2451,7 +2513,7 @@ dlgOverlay.addEventListener('click', (e) => {
 
 function confirmDialog({ title, message, okLabel = 'Confirm', danger = false }) {
   return openDialog({
-    title, bodyHtml: `<p class="dlg-msg">${message}</p>`, okLabel, danger,
+    title, bodyHtml: `<p class="dlg-msg">${escHtml(message)}</p>`, okLabel, danger,
     onReady: () => dlgCancel.focus({ preventScroll: true })      // destructive actions never default-focus the confirm button
   }).then(r => !!r);
 }
@@ -2974,7 +3036,7 @@ function applyCurrentSort() {
 
 // Shared by the manual "Add coin" flow and the Discover-section add buttons.
 async function addCoinToPortfolio(chosenId, rawSymbol, chosenName) {
-  if (saved.some(s => s.id === chosenId)) { alert(`${rawSymbol} is already in your list.`); return false; }
+  if (saved.some(s => s.id === chosenId)) { setActivityStatus(`${rawSymbol} is already in your list.`, 'warn'); return false; }
   const newCoin = { symbol: rawSymbol, id: chosenId, name: chosenName || chosenId, target: null };
   saved.push(newCoin);
   save();
@@ -2994,7 +3056,7 @@ addBtn.onclick = async () => {
   const rawSymbol = symbolInput.value.trim().toUpperCase();
   const chosenId = symbolInput.dataset.selectedId || null;
   const chosenName = symbolInput.dataset.selectedName || null;
-  if (!chosenId) { alert('Please select a coin from the dropdown after typing.'); return; }
+  if (!chosenId) { setActivityStatus('Please select a coin from the dropdown after typing.', 'warn'); return; }
 
   symbolInput.value = '';
   delete symbolInput.dataset.selectedId;
