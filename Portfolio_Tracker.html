@@ -273,6 +273,9 @@ td[data-col="coin"] { overflow: hidden; text-overflow: ellipsis; }
 }
 #suggestBox {
   position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  width: calc(100% - 88px);
   z-index: 40;
   background: var(--panel-2);
   border: 1px solid var(--border);
@@ -595,7 +598,7 @@ html.cp-locked, body.cp-locked{overflow:hidden}
   </div>
 </div>
 
-<script defer>
+<script>
 (async function () {
 
 const currentStatus   = document.getElementById('currentStatus');
@@ -796,7 +799,6 @@ let coinPopupOpen = false;
 let popupShownId = null;
 let popupLastHtml = '';
 let popupCloseTimer = null;
-let popupLastFocus = null;
 let popupBackdropDown = false;
 let popupScrollLocked = false;
 let popupPrevPadRight = '';
@@ -805,6 +807,7 @@ let dlgCtx = { cur: null, today: '', yest: '' };
 let refreshPriceTimer = null;
 let recheckTimer = null;
 let coinListLoaded = false;
+let initialPriceFetchComplete = false;
 
 let lastPriceTime = parseInt(localStorage.getItem('shortfall_prices_time') || '0', 10);
 let lastTaTime     = parseInt(localStorage.getItem('shortfall_ta_time') || '0', 10);
@@ -1151,8 +1154,9 @@ async function fetchTaHistory(id) {
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
-    const res = await fetch(`${API_BASE}/coins/${id}/market_chart?vs_currency=inr&days=${TA_HISTORY_DAYS}&interval=daily&x_cg_demo_api_key=${API_KEY}`, { signal: controller.signal });
-    clearTimeout(timeoutId);
+    let res;
+    try { res = await fetch(`${API_BASE}/coins/${id}/market_chart?vs_currency=inr&days=${TA_HISTORY_DAYS}&interval=daily&x_cg_demo_api_key=${API_KEY}`, { signal: controller.signal }); }
+    finally { clearTimeout(timeoutId); }
     if (!res.ok) throw new Error(`HTTP_ERROR:${res.status}`);
     const data = await res.json();
     const points = (data.prices || []).filter(p => p && p[1] != null);
@@ -1180,8 +1184,9 @@ async function fetchJsonTimeout(url) {
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
-    const res = await fetch(url, { signal: controller.signal });
-    clearTimeout(timeoutId);
+    let res;
+    try { res = await fetch(url, { signal: controller.signal }); }
+    finally { clearTimeout(timeoutId); }
     if (!res.ok) throw new Error(`HTTP_ERROR:${res.status}`);
     return await res.json();
   } catch (err) {
@@ -1822,8 +1827,9 @@ async function checkApiStatus() {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000);
     const start = performance.now();
-    const res = await fetch(`${API_BASE}/ping?x_cg_demo_api_key=${API_KEY}`, { signal: controller.signal });
-    clearTimeout(timeoutId);
+    let res;
+    try { res = await fetch(`${API_BASE}/ping?x_cg_demo_api_key=${API_KEY}`, { signal: controller.signal }); }
+    finally { clearTimeout(timeoutId); }
     if (!res.ok) throw new Error(`HTTP_ERROR:${res.status}`);
     setCurrentStatus(`Live · ${(performance.now() - start).toFixed(0)}ms`, 'ok');
     if (apiWasDown) { setActivityStatus('API reachable again.', 'ok'); apiWasDown = false; }
@@ -1880,8 +1886,9 @@ async function loadCoinList(isApiReachable) {
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 7000);
-    const res = await fetch(`${API_BASE}/coins/list?x_cg_demo_api_key=${API_KEY}`, { signal: controller.signal });
-    clearTimeout(timeoutId);
+    let res;
+    try { res = await fetch(`${API_BASE}/coins/list?x_cg_demo_api_key=${API_KEY}`, { signal: controller.signal }); }
+    finally { clearTimeout(timeoutId); }
     if (!res.ok) throw new Error(`HTTP_ERROR:${res.status}`);
     coinList = await res.json() || [];
     buildIndex(coinList);
@@ -1902,8 +1909,9 @@ async function fetchPricesChunk(validIds, attempt = 0) {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000);
-      const res = await fetch(`${API_BASE}/coins/markets?vs_currency=inr&ids=${validIds.join(',')}&order=market_cap_desc&per_page=250&page=1&sparkline=false&price_change_percentage=7d,30d&x_cg_demo_api_key=${API_KEY}`, { signal: controller.signal });
-      clearTimeout(timeoutId);
+      let res;
+      try { res = await fetch(`${API_BASE}/coins/markets?vs_currency=inr&ids=${validIds.join(',')}&order=market_cap_desc&per_page=250&page=1&sparkline=false&price_change_percentage=7d,30d&x_cg_demo_api_key=${API_KEY}`, { signal: controller.signal }); }
+      finally { clearTimeout(timeoutId); }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       const foundIds = new Set();
@@ -1945,9 +1953,10 @@ async function fetchPricesChunk(validIds, attempt = 0) {
 }
 
 async function fetchPrices(ids) {
-  if (!Array.isArray(ids) || !ids.length) return false;
+  if (!Array.isArray(ids)) return false;
+  if (!ids.length) return true;
   const validIds = ids.filter(Boolean);
-  if (!validIds.length) return false;
+  if (!validIds.length) return true;
 
   const chunks = [];
   for (let i = 0; i < validIds.length; i += MAX_IDS_PER_PRICE_CALL) chunks.push(validIds.slice(i, i + MAX_IDS_PER_PRICE_CALL));
@@ -2023,6 +2032,7 @@ const SIGNAL_LABELS_SHORT = {
 };
 
 function healthOf(id) {
+  if (!initialPriceFetchComplete) return { color: 'var(--muted-2)', shortLabel: 'Loading…', fresh: false, pending: true };
   const entry = marketDataCache[id];
   if (!entry || entry.notFound) return { color: 'var(--sell)', shortLabel: 'No data', fresh: false };
   const stale = (Date.now() - entry.timestamp) >= PRICE_REFRESH_INTERVAL * 3;
@@ -2037,6 +2047,12 @@ function signalCellHTML(id) {
   const ta = holdingSignalCache[id];
   const health = healthOf(id);
   if (!health.fresh) {
+    if (health.pending) {
+      return {
+        html: '<div class="signal-wrap"><span class="health-dot" style="background:var(--muted-2)"></span><span class="sig-pill na">LOADING</span></div>',
+        color: 'var(--muted-2)'
+      };
+    }
     // Data is stale/missing — the signal was computed from this same data,
     // so it's not trustworthy either. Show only the freshness state, not both.
     const label = health.shortLabel || 'Stale';
@@ -2274,105 +2290,87 @@ document.addEventListener('click', (e) => {
 // so nothing is ever created twice and no listener is ever added twice. The popup's buttons use one
 // delegated listener on its body, so they keep working across re-renders.
 // ===== Back-button integration ======================================================================
-// Each open overlay (coin popup, DCA/confirm dialog) owns one history entry, so the device Back button / swipe-back
-// closes the topmost overlay instead of leaving the page. Closing by ✕ / backdrop / Esc / swipe-down removes that
-// entry again. `pushed` mirrors how many of our entries are on the stack; history.state.cpLayer is the source of truth.
-const NAV_HISTORY_KEY = '__portfolioTrackerOverlay';
-const navHist = {
-  session: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
-  depth: 0,
-  busy: false,
-  traversalTarget: null,
-  handlingPop: false
-};
+// Each overlay owns one history entry. Back closes only the topmost overlay in the stack.
+const NAV_HISTORY_KEY = '__portfolioTrackerOverlayStack';
+const navHist = { stack: [], handlingPop: false };
 
-function openLayerCount() {
-  return (coinPopupOpen ? 1 : 0) + (dlgOpen ? 1 : 0);
+function currentOverlayStack() {
+  const stack = [];
+  if (coinPopupOpen) stack.push('popup');
+  if (dlgOpen) stack.push('dialog');
+  return stack;
 }
 
-function readNavHistoryDepth(state) {
-  const marker = state && typeof state === 'object' ? state[NAV_HISTORY_KEY] : null;
-  return marker && marker.session === navHist.session && Number.isInteger(marker.depth) && marker.depth > 0
-    ? marker.depth
-    : 0;
+function hasLegacyOverlayMarker(state) {
+  if (!state || typeof state !== 'object') return false;
+  return Object.prototype.hasOwnProperty.call(state, '__portfolioTrackerOverlay')
+    || Object.prototype.hasOwnProperty.call(state, 'cpLayer');
 }
 
-function navHistoryState(depth) {
+function navHistoryState(stack) {
   const current = history.state;
-  const next = current && typeof current === 'object' && !Array.isArray(current)
-    ? { ...current }
-    : {};
-  next[NAV_HISTORY_KEY] = { session: navHist.session, depth };
+  const next = current && typeof current === 'object' && !Array.isArray(current) ? { ...current } : {};
+  delete next.__portfolioTrackerOverlay;
+  delete next.cpLayer;
+  next[NAV_HISTORY_KEY] = stack.slice();
   return next;
 }
 
 function syncNavHistory() {
-  if (navHist.handlingPop || navHist.busy) return;
-
-  const wantedDepth = openLayerCount();
+  if (navHist.handlingPop) return;
+  const desired = currentOverlayStack();
+  const current = navHist.stack;
+  const isPrefix = desired.length <= current.length && desired.every((layer, index) => layer === current[index]);
 
   try {
-    while (navHist.depth < wantedDepth) {
-      const nextDepth = navHist.depth + 1;
-      history.pushState(navHistoryState(nextDepth), '');
-      navHist.depth = nextDepth;
-    }
-
-    if (navHist.depth > wantedDepth) {
-      navHist.busy = true;
-      navHist.traversalTarget = Math.max(0, navHist.depth - 1);
+    if (desired.length > current.length && current.every((layer, index) => desired[index] === layer)) {
+      history.pushState(navHistoryState(desired), '');
+      navHist.stack = desired;
+    } else if (isPrefix && desired.length < current.length) {
+      navHist.stack = desired;
       history.back();
+    } else if (desired.length === current.length && desired.every((layer, index) => layer === current[index])) {
+      return;
+    } else {
+      history.replaceState(navHistoryState(desired), '');
+      navHist.stack = desired;
     }
   } catch (e) {
-    navHist.busy = false;
+    navHist.stack = desired;
   }
 }
 
 window.addEventListener('popstate', (event) => {
-  const nextDepth = readNavHistoryDepth(event.state);
-  const completedProgrammaticTraversal = navHist.busy && nextDepth === navHist.traversalTarget;
+  const stateStack = Array.isArray(event.state?.[NAV_HISTORY_KEY])
+    ? event.state[NAV_HISTORY_KEY].filter(layer => layer === 'popup' || layer === 'dialog')
+    : [];
+  const currentlyOpen = currentOverlayStack();
+  const targetIsPrefix = stateStack.length <= currentlyOpen.length
+    && stateStack.every((layer, index) => layer === currentlyOpen[index]);
 
-  navHist.depth = nextDepth;
-  navHist.busy = false;
-  navHist.traversalTarget = null;
-
-  if (!completedProgrammaticTraversal) {
-    navHist.handlingPop = true;
-
-    while (openLayerCount() > navHist.depth) {
-      if (dlgOpen) closeDialog(null);
-      else if (coinPopupOpen) closeCoinPopup();
-      else break;
-    }
-
-    navHist.handlingPop = false;
+  if (!targetIsPrefix) {
+    navHist.stack = currentlyOpen;
+    if (stateStack.length > currentlyOpen.length) history.back();
+    return;
   }
 
-  const actualDepth = openLayerCount();
-  if (navHist.depth > actualDepth) {
-    try {
-      history.replaceState(navHistoryState(actualDepth), '');
-      navHist.depth = actualDepth;
-    } catch (e) {}
-  }
+  navHist.stack = stateStack;
+  navHist.handlingPop = true;
+  if (dlgOpen && !stateStack.includes('dialog')) closeDialog(null);
+  if (coinPopupOpen && !stateStack.includes('popup')) closeCoinPopup();
+  navHist.handlingPop = false;
 
-  syncNavHistory();
+  if (!stateStack.length && hasLegacyOverlayMarker(event.state)) history.back();
 });
 
 try {
   const currentState = history.state;
-  if (currentState && typeof currentState === 'object') {
+  if (hasLegacyOverlayMarker(currentState) || (currentState && typeof currentState === 'object' && Object.prototype.hasOwnProperty.call(currentState, NAV_HISTORY_KEY))) {
     const cleanedState = { ...currentState };
-    let changed = false;
-    if (Object.prototype.hasOwnProperty.call(cleanedState, NAV_HISTORY_KEY)) {
-      delete cleanedState[NAV_HISTORY_KEY];
-      changed = true;
-    }
-    if (Object.prototype.hasOwnProperty.call(cleanedState, 'cpLayer')) {
-      delete cleanedState.cpLayer;
-      changed = true;
-    }
-    if (changed) history.replaceState(cleanedState, '');
+    delete cleanedState[NAV_HISTORY_KEY];
+    delete cleanedState.__portfolioTrackerOverlay;
+    delete cleanedState.cpLayer;
+    history.replaceState(cleanedState, '');
   }
 } catch (e) {}
 
@@ -2399,7 +2397,6 @@ function unlockPageScroll() {
 function openCoinPopupShell() {
   if (coinPopupOpen) return;
   clearTimeout(popupCloseTimer);
-  popupLastFocus = document.activeElement;
   coinPopupOpen = true;
   popupBackdropDown = false;
   syncNavHistory();
@@ -2427,9 +2424,6 @@ function closeCoinPopup() {
   appRoot.inert = false;
   unlockPageScroll();
   syncNavHistory();
-  const back = popupLastFocus;
-  popupLastFocus = null;
-  if (back && back.isConnected && typeof back.focus === 'function' && back !== document.body) back.focus({ preventScroll: true });
   clearTimeout(popupCloseTimer);
   // Wait for the slide-out, then drop the content (this also tears down any TradingView iframe).
   popupCloseTimer = setTimeout(() => { if (!coinPopupOpen) popupBody.innerHTML = ''; }, 320);
@@ -2542,7 +2536,7 @@ function closeDialog(result) {
   popupOverlay.inert = false;
   clearTimeout(dlgCloseTimer);
   dlgCloseTimer = setTimeout(() => { if (!dlgOpen) dlgBody.innerHTML = ''; }, 260);
-  if (back && back.isConnected && typeof back.focus === 'function') back.focus({ preventScroll: true });
+  if (back && back.isConnected && typeof back.focus === 'function' && !back.matches('th.sortable')) back.focus({ preventScroll: true });
   else if (coinPopupOpen) popupSheet.focus({ preventScroll: true });
   if (done) done(result);
 }
@@ -2856,8 +2850,9 @@ function expandRowCore(tr, item, forceReExpand) {
     <div class="chart-container" id="chart-container-${item.id}"></div>`;
 
   if (!ta || ta.signal === 'NA') {
+    const pendingReason = !initialPriceFetchComplete ? 'Loading market prices…' : (ta ? ta.reason : 'No market data yet for this coin.');
     presentCoinPopup(item, `<div class="detail-box">
-      <div class="detail-reason">${ta ? ta.reason : 'No market data yet for this coin.'}</div>
+      <div class="detail-reason">${pendingReason}</div>
       ${chartHtml}
       ${removeBtnHtml}
     </div>`, SIG_COLOR.na);
@@ -3145,8 +3140,9 @@ async function discoverCandidates() {
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15000);
-    const res = await fetch(`${API_BASE}/coins/markets?vs_currency=inr&order=market_cap_desc&per_page=${DISCOVER_TOP_N}&page=1&sparkline=false&price_change_percentage=7d,30d&x_cg_demo_api_key=${API_KEY}`, { signal: controller.signal });
-    clearTimeout(timeoutId);
+    let res;
+    try { res = await fetch(`${API_BASE}/coins/markets?vs_currency=inr&order=market_cap_desc&per_page=${DISCOVER_TOP_N}&page=1&sparkline=false&price_change_percentage=7d,30d&x_cg_demo_api_key=${API_KEY}`, { signal: controller.signal }); }
+    finally { clearTimeout(timeoutId); }
     if (!res.ok) throw new Error(`HTTP_ERROR:${res.status}`);
     const markets = await res.json();
 
@@ -3267,17 +3263,27 @@ signalHeader.addEventListener('click', () => {
 });
 
 let suggestTimer;
+function chooseSuggestion(el) {
+  if (!el) return false;
+  symbolInput.value = el.dataset.symbol;
+  symbolInput.dataset.selectedId = el.dataset.id;
+  symbolInput.dataset.selectedName = el.dataset.name;
+  suggestBox.style.display = 'none';
+  addBtn.disabled = false;
+  return true;
+}
+
 symbolInput.addEventListener('input', () => {
   clearTimeout(suggestTimer);
   const query = symbolInput.value.trim();
   delete symbolInput.dataset.selectedId;
   delete symbolInput.dataset.selectedName;
   addBtn.disabled = true;
-  if (!query) { suggestBox.style.display = 'none'; return; }
+  if (!query) { suggestBox.style.display = 'none'; addBtn.disabled = true; return; }
   if (!coinListLoaded) {
     suggestBox.innerHTML = '<div class="suggestion-no-result">Coin list unavailable or still loading…</div>';
-    positionSuggestBox();
     suggestBox.style.display = 'block';
+    addBtn.disabled = true;
     return;
   }
   suggestTimer = setTimeout(() => {
@@ -3286,61 +3292,61 @@ symbolInput.addEventListener('input', () => {
     if (symbolIndex[q]) results.push(...symbolIndex[q]);
     if (results.length < 25) {
       coinList.some(c => {
-        const s = c.symbol?.toLowerCase() || '';
-        const n = c.name?.toLowerCase() || '';
-        if (s.includes(q) || n.includes(q)) { results.push({ id: c.id, symbol: c.symbol?.toUpperCase(), name: c.name }); return results.length >= 25; }
+        const symbol = c.symbol?.toLowerCase() || '';
+        const name = c.name?.toLowerCase() || '';
+        if ((symbol.includes(q) || name.includes(q)) && !results.some(r => r.id === c.id)) {
+          results.push({ id: c.id, symbol: c.symbol?.toUpperCase(), name: c.name });
+          return results.length >= 25;
+        }
         return false;
       });
     }
     suggestBox.innerHTML = results.length
       ? results.map(coin => `<div class="suggestion-item" data-id="${coin.id}" data-symbol="${coin.symbol}" data-name="${(coin.name || '').replace(/"/g, '&quot;')}">${coin.symbol} — ${coin.name}</div>`).join('')
       : '<div class="suggestion-no-result">No results found</div>';
+    const first = suggestBox.querySelector('.suggestion-item');
+    if (first) {
+      symbolInput.dataset.selectedId = first.dataset.id;
+      symbolInput.dataset.selectedName = first.dataset.name;
+      addBtn.disabled = false;
+    } else {
+      addBtn.disabled = true;
+    }
     suggestBox.querySelectorAll('.suggestion-item').forEach(el => {
-      el.addEventListener('click', () => {
-        symbolInput.value = el.dataset.symbol;
-        symbolInput.dataset.selectedId = el.dataset.id;
-        symbolInput.dataset.selectedName = el.dataset.name;
-        suggestBox.style.display = 'none';
-        addBtn.disabled = false;
-      });
+      el.addEventListener('click', () => chooseSuggestion(el));
     });
-    positionSuggestBox();
     suggestBox.style.display = 'block';
   }, 250);
 });
-
-function positionSuggestBox() {
-  const rect = symbolInput.getBoundingClientRect();
-  const parentRect = symbolInput.offsetParent.getBoundingClientRect();
-  suggestBox.style.top = (rect.bottom - parentRect.top + 4) + 'px';
-  suggestBox.style.left = (rect.left - parentRect.left) + 'px';
-  suggestBox.style.width = rect.width + 'px';
-}
 
 document.addEventListener('click', (e) => {
   if (!symbolInput.contains(e.target) && !suggestBox.contains(e.target)) suggestBox.style.display = 'none';
 });
 
 buildPortfolioMap();
+saved.sort(compareBySortColumn);
 renderTable();
 
 const isApiReachable = await checkApiStatus();
-await loadCoinList(isApiReachable);
-
 const startIds = saved.map(s => s.id).filter(Boolean);
 const startTaIds = [...new Set([...startIds, 'bitcoin'])];
+
 if (isApiReachable) {
   refreshPriceTimer = setInterval(schedulePriceFetch, PRICE_REFRESH_INTERVAL);
   await fetchPrices(startIds);
+  initialPriceFetchComplete = true;
   recomputeHoldingSignals();
+  applyCurrentSort();
   updateScheduledStatus();
   fetchTaForPortfolio(startTaIds);
   refreshDayCandles(startIds);
 } else {
+  initialPriceFetchComplete = true;
+  renderTable();
   scheduleApiRecheck();
 }
 
-applyCurrentSort();
+loadCoinList(isApiReachable);
 
 })();
 </script>
