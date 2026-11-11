@@ -2378,6 +2378,52 @@ const ptHistoryDiagnostics = (() => {
   return { add, getEntries: () => entries.slice() };
 })();
 
+const ptInputDiagnostics = (() => {
+  let lastPointer = null;
+  const describeTarget = (target) => {
+    if (!(target instanceof Element)) return String(target);
+    const row = target.closest('tr.main-row');
+    const parts = [];
+    let node = target;
+    while (node && node instanceof Element && parts.length < 5) {
+      let value = node.tagName.toLowerCase();
+      if (node.id) value += `#${node.id}`;
+      if (node.classList.length) value += `.${Array.from(node.classList).slice(0, 3).join('.')}`;
+      parts.push(value);
+      node = node.parentElement;
+    }
+    return `${parts.join(' < ')}${row ? ` | rowId=${row.dataset.id || ''}` : ''}`;
+  };
+  const record = (type, event) => {
+    const target = describeTarget(event.target);
+    if (!target.includes('tr.main-row') && !target.includes('rowId=')) return;
+    const pointerType = event.pointerType || lastPointer?.pointerType || 'unknown';
+    const detail = `trusted=${event.isTrusted} detail=${event.detail ?? '—'} pointerType=${pointerType} x=${Math.round(event.clientX ?? lastPointer?.x ?? 0)} y=${Math.round(event.clientY ?? lastPointer?.y ?? 0)} target=${target}`;
+    ptHistoryDiagnostics.add(type, detail);
+  };
+  document.addEventListener('pointerdown', event => {
+    lastPointer = { pointerType: event.pointerType || 'unknown', x: event.clientX, y: event.clientY, time: Date.now() };
+    record('ROW POINTERDOWN', event);
+  }, true);
+  document.addEventListener('pointerup', event => record('ROW POINTERUP', event), true);
+  document.addEventListener('touchstart', event => {
+    const target = describeTarget(event.target);
+    if (target.includes('tr.main-row') || target.includes('rowId=')) {
+      const touch = event.changedTouches?.[0];
+      ptHistoryDiagnostics.add('ROW TOUCHSTART', `trusted=${event.isTrusted} x=${Math.round(touch?.clientX || 0)} y=${Math.round(touch?.clientY || 0)} target=${target}`);
+    }
+  }, { capture: true, passive: true });
+  document.addEventListener('touchend', event => {
+    const target = describeTarget(event.target);
+    if (target.includes('tr.main-row') || target.includes('rowId=')) {
+      const touch = event.changedTouches?.[0];
+      ptHistoryDiagnostics.add('ROW TOUCHEND', `trusted=${event.isTrusted} x=${Math.round(touch?.clientX || 0)} y=${Math.round(touch?.clientY || 0)} target=${target}`);
+    }
+  }, { capture: true, passive: true });
+  document.addEventListener('click', event => record('ROW CLICK CAPTURE', event), true);
+  return { describeTarget };
+})();
+
 function currentOverlayStack() {
   const stack = [];
   if (coinPopupOpen) stack.push('popup');
@@ -2874,6 +2920,7 @@ function renderTable() {
     `;
 
     tr.onclick = (e) => {
+      ptHistoryDiagnostics.add('ROW CLICK HANDLER', `symbol=${item.symbol} id=${item.id} trusted=${e.isTrusted} detail=${e.detail ?? '—'} pointerType=${e.pointerType || 'unknown'} target=${ptInputDiagnostics.describeTarget(e.target)}`);
       if (e.target.classList.contains('target-input')) return;
       // Tapping the target value starts inline target editing — don't also pop the sheet over it.
       if (e.target.closest('.target-display')) return;
