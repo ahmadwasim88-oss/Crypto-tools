@@ -2329,23 +2329,16 @@ function syncNavHistory() {
   const isPrefix = desired.length <= current.length && desired.every((layer, index) => layer === current[index]);
 
   try {
-    if (desired.length > current.length && current.every((layer, index) => desired[index] === current[index])) {
+    if (desired.length > current.length && current.every((layer, index) => desired[index] === layer)) {
       for (let length = current.length + 1; length <= desired.length; length++) {
         const nextStack = desired.slice(0, length);
         history.pushState(navHistoryState(nextStack), '');
         navHist.stack = nextStack;
       }
     } else if (isPrefix && desired.length < current.length) {
-      navHist.stack = desired;
       navHist.pendingBack = true;
       navHist.pendingDesired = desired;
-      try {
-        history.back();
-      } catch (error) {
-        navHist.pendingBack = false;
-        navHist.pendingDesired = null;
-        history.replaceState(navHistoryState(desired), '');
-      }
+      history.back();
     } else if (desired.length === current.length && desired.every((layer, index) => layer === current[index])) {
       return;
     } else {
@@ -2363,21 +2356,14 @@ window.addEventListener('popstate', (event) => {
   const stateStack = Array.isArray(event.state?.[NAV_HISTORY_KEY])
     ? event.state[NAV_HISTORY_KEY].filter(layer => layer === 'popup' || layer === 'dialog')
     : [];
-  if (navHist.pendingBack) {
-    navHist.stack = stateStack;
-    navHist.pendingBack = false;
-    navHist.pendingDesired = null;
-    syncNavHistory();
-    return;
-  }
-
   const currentlyOpen = currentOverlayStack();
   const targetIsPrefix = stateStack.length <= currentlyOpen.length
     && stateStack.every((layer, index) => layer === currentlyOpen[index]);
 
+  navHist.pendingBack = false;
+  navHist.pendingDesired = null;
+
   if (!targetIsPrefix) {
-    navHist.pendingBack = false;
-    navHist.pendingDesired = null;
     navHist.stack = currentlyOpen;
     try { history.replaceState(navHistoryState(currentlyOpen), ''); } catch (e) {}
     return;
@@ -2392,6 +2378,10 @@ window.addEventListener('popstate', (event) => {
     navHist.handlingPop = false;
   }
 
+  const actualStack = currentOverlayStack();
+  if (actualStack.length !== stateStack.length || actualStack.some((layer, index) => layer !== stateStack[index])) {
+    syncNavHistory();
+  }
 });
 
 try {
