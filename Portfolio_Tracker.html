@@ -2294,6 +2294,90 @@ document.addEventListener('click', (e) => {
 const NAV_HISTORY_KEY = '__portfolioTrackerOverlayStack';
 const navHist = { stack: [], handlingPop: false, pendingBack: false, pendingDesired: null };
 
+const ptHistoryDiagnostics = (() => {
+  const entries = [];
+  const maxEntries = 250;
+  let panel = null;
+  let output = null;
+  let toggle = null;
+  let visible = false;
+  const stamp = () => new Date().toLocaleTimeString('en-GB', { hour12: false });
+  const stateSummary = (state) => {
+    if (!state || typeof state !== 'object') return String(state);
+    try { return JSON.stringify(state); } catch (e) { return '[unserializable state]'; }
+  };
+  const overlaySummary = () => `popup=${!!coinPopupOpen} dialog=${!!dlgOpen}`;
+  const add = (type, detail = '', stack = '') => {
+    const line = `${stamp()} | ${type} | len=${history.length} | ${overlaySummary()} | nav=${JSON.stringify(navHist.stack)} | pendingBack=${!!navHist.pendingBack} | state=${stateSummary(history.state)}${detail ? ` | ${detail}` : ''}${stack ? `\n${stack}` : ''}`;
+    entries.push(line);
+    if (entries.length > maxEntries) entries.shift();
+    if (output) {
+      output.value = entries.join('\n\n');
+      output.scrollTop = output.scrollHeight;
+    }
+    if (toggle) toggle.textContent = `History log (${entries.length})`;
+  };
+  const caller = () => {
+    try { return new Error().stack?.split('\n').slice(2, 8).join('\n') || ''; } catch (e) { return ''; }
+  };
+  const wrap = (method) => {
+    const original = history[method];
+    if (typeof original !== 'function') return;
+    history[method] = function(...args) {
+      const detail = method === 'pushState' || method === 'replaceState' ? `newState=${stateSummary(args[0])}` : `args=${JSON.stringify(args)}`;
+      add(`${method} BEFORE`, detail, caller());
+      const result = Reflect.apply(original, this, args);
+      add(`${method} AFTER`, detail);
+      return result;
+    };
+  };
+  ['pushState', 'replaceState', 'back', 'forward', 'go'].forEach(wrap);
+  window.addEventListener('popstate', (event) => add('POPSTATE', `eventState=${stateSummary(event.state)}`, caller()));
+  window.addEventListener('hashchange', (event) => add('HASHCHANGE', `oldURL=${event.oldURL} newURL=${event.newURL}`, caller()));
+  window.addEventListener('pagehide', (event) => add('PAGEHIDE', `persisted=${!!event.persisted}`, caller()));
+  const installPanel = () => {
+    if (!document.body || panel) return;
+    const style = document.createElement('style');
+    style.textContent = '#pt-history-toggle{position:fixed;z-index:2147483000;right:12px;bottom:12px;border:0;border-radius:22px;padding:10px 14px;background:#172554;color:#fff;font:600 12px system-ui;box-shadow:0 3px 14px #0004}#pt-history-panel{position:fixed;z-index:2147483001;left:10px;right:10px;bottom:58px;max-height:55vh;padding:10px;background:#fff;color:#111827;border:1px solid #cbd5e1;border-radius:12px;box-shadow:0 8px 30px #0004;display:none;gap:8px;grid-template-rows:auto minmax(120px,1fr) auto;font:12px system-ui}#pt-history-panel.open{display:grid}#pt-history-panel textarea{width:100%;height:100%;min-height:120px;resize:vertical;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:7px;padding:8px;background:#f8fafc;color:#111827;font:11px/1.45 monospace;white-space:pre;overflow:auto}#pt-history-panel .pt-hd-actions{display:flex;gap:8px;justify-content:flex-end}#pt-history-panel button{border:1px solid #cbd5e1;border-radius:7px;background:#f1f5f9;color:#111827;padding:7px 11px;font:600 12px system-ui}';
+    document.head.appendChild(style);
+    toggle = document.createElement('button');
+    toggle.id = 'pt-history-toggle';
+    toggle.type = 'button';
+    toggle.textContent = 'History log (0)';
+    panel = document.createElement('section');
+    panel.id = 'pt-history-panel';
+    panel.setAttribute('aria-label', 'Browser history diagnostics');
+    const heading = document.createElement('strong');
+    heading.textContent = 'Browser history diagnostics';
+    output = document.createElement('textarea');
+    output.readOnly = true;
+    output.setAttribute('aria-label', 'History diagnostic log');
+    output.placeholder = 'History activity will appear here.';
+    const actions = document.createElement('div');
+    actions.className = 'pt-hd-actions';
+    const clear = document.createElement('button');
+    clear.type = 'button';
+    clear.textContent = 'Clear';
+    clear.addEventListener('click', () => { entries.length = 0; output.value = ''; toggle.textContent = 'History log (0)'; add('LOG CLEARED'); });
+    const select = document.createElement('button');
+    select.type = 'button';
+    select.textContent = 'Select log';
+    select.addEventListener('click', () => { output.focus(); output.select(); });
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.textContent = 'Close';
+    close.addEventListener('click', () => { visible = false; panel.classList.remove('open'); });
+    actions.append(clear, select, close);
+    panel.append(heading, output, actions);
+    toggle.addEventListener('click', () => { visible = !visible; panel.classList.toggle('open', visible); if (visible) { output.value = entries.join('\n\n'); output.scrollTop = output.scrollHeight; } });
+    document.body.append(toggle, panel);
+    add('DIAGNOSTICS READY', `url=${location.href}`);
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installPanel, { once: true });
+  else installPanel();
+  return { add, getEntries: () => entries.slice() };
+})();
+
 function currentOverlayStack() {
   const stack = [];
   if (coinPopupOpen) stack.push('popup');
@@ -2317,8 +2401,9 @@ function navHistoryState(stack) {
 }
 
 function syncNavHistory() {
-  if (navHist.handlingPop) return;
   const desired = currentOverlayStack();
+  ptHistoryDiagnostics.add('syncNavHistory CALLED', `desired=${JSON.stringify(desired)} current=${JSON.stringify(navHist.stack)}`, new Error().stack?.split('\n').slice(1, 7).join('\n') || '');
+  if (navHist.handlingPop) return;
 
   if (navHist.pendingBack) {
     navHist.pendingDesired = desired;
