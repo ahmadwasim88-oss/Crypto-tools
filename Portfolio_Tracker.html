@@ -663,9 +663,28 @@ const DCA_MODERATE_PCT = -40;
 const DCA_DIP_WINDOW_DAYS = 90;
 const DCA_DIP_NEAR_PCT = 3; // fallback only, used before any TA history is loaded — see nearLowThresholdPct
 const DCA_VOL_LOOKBACK_DAYS = 20; // used to scale the gap gate to each coin's own volatility
-const DCA_GAP_MULT = 3.0;
-const DCA_GAP_FLOOR_PCT = 5;
-const DCA_GAP_CEIL_PCT = 12;
+const DCA_GAP_MULT = 4.0;
+const DCA_GAP_FLOOR_PCT = 10;
+const DCA_GAP_CEIL_PCT = 20;
+
+function getDcaGapStatus(currentPrice, lastLog, avgDailyMove) {
+  const move = Number.isFinite(avgDailyMove) && avgDailyMove > 0 ? avgDailyMove : DCA_GAP_FLOOR_PCT;
+  const requiredGapPct = Math.max(DCA_GAP_FLOOR_PCT, Math.min(DCA_GAP_CEIL_PCT, move * DCA_GAP_MULT));
+  const hasLastDca = lastLog != null;
+  const lastDcaPrice = hasLastDca ? Number(lastLog.price) : null;
+  const validReference = Number.isFinite(lastDcaPrice) && lastDcaPrice > 0;
+  const validCurrent = Number.isFinite(currentPrice) && currentPrice > 0;
+  const gapPct = hasLastDca && validReference && validCurrent
+    ? (lastDcaPrice - currentPrice) / lastDcaPrice * 100
+    : null;
+  const cleared = !hasLastDca || (gapPct != null && gapPct >= requiredGapPct);
+  return {
+    requiredGapPct,
+    gapPct,
+    cleared,
+    nextDcaPrice: validReference ? lastDcaPrice * (1 - requiredGapPct / 100) : null
+  };
+}
 const REL_STRENGTH_WINDOW_DAYS = 14;
 const EMA_TREND_FAST_SHORT = 20, EMA_TREND_FAST_LONG = 50;
 const REL_STRENGTH_SCALE = 3;
@@ -767,7 +786,7 @@ const DISCOVER_MAX_TA_FETCHES = 25;
 
 const EMA_TREND_LONG = 200;
 
-const TA_LOGIC_VERSION = 23; // 23: holdings gate + Discover share pickRefWindow (qualified window, else closest-to-oversold); 22: add/swing gates use an RSI-qualified low/high (90→180→365d); earlier: ACCUMULATE RSI tightened (10th pct, ceiling 35) + last closed-day RSI must be oversold; overbought band 80-92 (97th pct)
+const TA_LOGIC_VERSION = 24; // 24: stricter last-DCA gap gate (10–20%, scaled at 4× average daily move) shared by holdings signals and diagnostics; 23: holdings gate + Discover share pickRefWindow (qualified window, else closest-to-oversold); 22: add/swing gates use an RSI-qualified low/high (90→180→365d); earlier: ACCUMULATE RSI tightened (10th pct, ceiling 35) + last closed-day RSI must be oversold; overbought band 80-92 (97th pct)
 const TA_FETCH_VERSION = 7; // bumped: 90d extremes now from hourly data (exact window) + in-window OHLC wicks; 365d extremes from OHLC wicks
 
 // Corrupt or missing storage must never stop the page from starting: fall back to an empty value instead of throwing.
@@ -1696,12 +1715,10 @@ function classifyHolding(md, item, ta, macroTa) {
         dcaStreakDay = reconstructStreakDays(ta.closes, cur, rsiThreshold, nearLowThresholdPct, gateWindow);
 
         const lastLog = dcaLogCache[item.id] ?? null;
-        const dynGapPct = Math.max(
-          DCA_GAP_FLOOR_PCT,
-          Math.min(DCA_GAP_CEIL_PCT, (avgDailyMove ?? DCA_GAP_FLOOR_PCT) * DCA_GAP_MULT)
-        );
-        const gapPct = lastLog != null ? (lastLog.price - cur) / lastLog.price * 100 : null;
-        const gapCleared = lastLog == null || gapPct >= dynGapPct;
+        const dcaGap = getDcaGapStatus(cur, lastLog, avgDailyMove);
+        const dynGapPct = dcaGap.requiredGapPct;
+        const gapPct = dcaGap.gapPct;
+        const gapCleared = dcaGap.cleared;
 
         if (gapCleared) {
           signal = 'ACCUMULATE'; colorKey = 'dca';
@@ -1710,7 +1727,7 @@ function classifyHolding(md, item, ta, macroTa) {
           const streakNote = dcaStreakDay === 1 ? 'First flagged today.' : `Day ${dcaStreakDay} of this dip.`;
           reason = `${depth.toFixed(0)}% below ATH${yrNote}, ${aboveLow.toFixed(1)}% above its ${gateWindow}d low (within this coin's own ≤${nearLowThresholdPct.toFixed(1)}% band), RSI ${liveRsi.toFixed(2)} (oversold vs this coin's own ≤${rsiThreshold.toFixed(0)} bottom zone) — conditions met. ${streakNote}${gapNote}${relStrengthNote}`;
         } else {
-          const nextDcaPrice = lastLog.price * (1 - dynGapPct / 100);
+          const nextDcaPrice = dcaGap.nextDcaPrice;
           const positionNote = gapPct >= 0
             ? `only ${gapPct.toFixed(1)}% below last DCA (${formatINR(lastLog.price, pricePrecisionFor(lastLog.price))})`
             : `${Math.abs(gapPct).toFixed(1)}% above last DCA (${formatINR(lastLog.price, pricePrecisionFor(lastLog.price))}), not below it`;
@@ -2908,9 +2925,10 @@ function expandRowCore(tr, item, forceReExpand) {
   const belowHigh = (ta.effectiveHigh != null && cmp != null) ? (ta.effectiveHigh - cmp) / ta.effectiveHigh * 100 : null;
   const closedRsi = taC.rsi ?? null;
   const lastLog = dcaLogCache[item.id] ?? null;
-  const dynGap = Math.max(DCA_GAP_FLOOR_PCT, Math.min(DCA_GAP_CEIL_PCT, (taC.avgDailyMove ?? DCA_GAP_FLOOR_PCT) * DCA_GAP_MULT));
-  const gapPct = (lastLog && cmp != null) ? (lastLog.price - cmp) / lastLog.price * 100 : null;
-  const gapOk = !lastLog || (gapPct != null && gapPct >= dynGap);
+  const dcaGap = getDcaGapStatus(cmp, lastLog, taC.avgDailyMove);
+  const dynGap = dcaGap.requiredGapPct;
+  const gapPct = dcaGap.gapPct;
+  const gapOk = dcaGap.cleared;
   const nearTarget = tgt != null && cmp != null ? cmp >= tgt * (1 - TARGET_PROXIMITY_PCT / 100) : false;
   const volOk = ta.volume != null && ta.mcap != null && ta.mcap > 0 && ta.volume > 0 && ta.volMcapRatio != null
     && ta.volMcapRatio >= LIQUIDITY_DEAD_RATIO && !(ta.mcap < MICROCAP_FLOOR && ta.volume < ABSOLUTE_DEAD_VOLUME);
@@ -2960,7 +2978,7 @@ function expandRowCore(tr, item, forceReExpand) {
     gates = gate(gAbove != null && gAbove <= nearThr ? 'ok' : 'no', `Close to ${gWd}-day low`, awayTxt(gTo), `${DOT}low ${fmt(gLow)}`, `needs ≤${fmt(gLvl)}${gBand == null ? '' : ` (≤${Math.abs(gBand).toFixed(1)}%)`}`)
       + gate(ta.rsi != null && ta.rsi <= osThr ? 'ok' : 'no', 'Oversold now (RSI)', ta.rsi == null ? '—' : ta.rsi.toFixed(1), (ta.rsi == null ? '' : `current${DOT}`) + `needs ≤${osThr.toFixed(0)}`)
       + gate(closedRsi == null ? 'na' : closedRsi <= osThr ? 'ok' : 'no', 'Oversold at last close', closedRsi == null ? '—' : closedRsi.toFixed(1), (closedRsi == null ? '' : `last close${DOT}`) + `needs ≤${osThr.toFixed(0)}`)
-      + gate(gapOk ? 'ok' : 'no', 'Below last DCA price', !lastLog ? 'no DCA logged' : `${Math.abs(gapPct).toFixed(1)}% ${gapPct >= 0 ? 'below' : 'above'}`, lastLog ? `${DOT}last ${fmt(lastLog.price)}` : '', lastLog ? `needs ≥${dynGap.toFixed(1)}% below (≤${fmt(lastLog.price * (1 - dynGap / 100))})` : '');
+      + gate(gapOk ? 'ok' : 'no', 'Below last DCA price', !lastLog ? 'no DCA logged' : (gapPct == null ? 'unavailable' : `${Math.abs(gapPct).toFixed(1)}% ${gapPct >= 0 ? 'below' : 'above'}`), lastLog ? `${DOT}last ${fmt(lastLog.price)}` : '', lastLog ? `needs ≥${dynGap.toFixed(1)}% below (≤${fmt(dcaGap.nextDcaPrice)})` : '');
   }
   const chk = (l, v) => `${l} <b class="${v == null ? 'muted' : v ? 'buy' : 'sell'}">${v == null ? '—' : v ? '✓' : '✕'}</b>`;
   const others = `Other checks: ${chk('Safe', volOk && microOk)} · ${chk('Target hit', tgt == null ? null : nearTarget)} · ${chk('Add', ta.signal === 'ACCUMULATE')} · ${chk('Swing trim', ta.signal === 'SWING TRIM')}`;
