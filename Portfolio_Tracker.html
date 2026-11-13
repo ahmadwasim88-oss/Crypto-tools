@@ -315,10 +315,29 @@ td[data-col="coin"] { overflow: hidden; text-overflow: ellipsis; }
   transition: background 0.3s ease, box-shadow 0.3s ease;
 }
 .status-line span#statusLineText {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   transition: color 0.3s ease;
 }
+.ta-refresh-btn {
+  flex: none;
+  width: 24px; height: 24px;
+  margin: -4px 0;
+  padding: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+.ta-refresh-btn:hover:not(:disabled) { color: var(--text); border-color: var(--muted-2); filter: none; }
+.ta-refresh-btn svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.ta-refresh-btn.spinning { color: var(--accent); border-color: rgba(76,141,255,0.35); }
+.ta-refresh-btn.spinning svg { animation: taSpin 0.9s linear infinite; }
+@keyframes taSpin { to { transform: rotate(360deg); } }
 .status-line.ok .sl-dot { background: var(--buy); box-shadow: 0 0 6px rgba(47,213,118,0.6); }
 .status-line.ok span#statusLineText { color: var(--buy); }
 .status-line.warn .sl-dot { background: var(--trim); box-shadow: 0 0 6px rgba(232,166,59,0.6); }
@@ -564,7 +583,11 @@ html.cp-locked, body.cp-locked{overflow:hidden}
 </div>
 
 <div id="activityLogContainer" class="activity-log-container">
-  <div id="statusLine" class="status-line"><span class="sl-dot"></span><span id="statusLineText">Prices — · TA —</span></div>
+  <div id="statusLine" class="status-line">
+    <span class="sl-dot"></span>
+    <span id="statusLineText">Prices — · TA —</span>
+    <button type="button" id="taRefreshBtn" class="ta-refresh-btn" aria-label="Refresh TA" title="Refresh TA"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg></button>
+  </div>
 </div>
 
 <div id="coinPopupOverlay" class="cp-overlay" aria-hidden="true">
@@ -604,6 +627,7 @@ html.cp-locked, body.cp-locked{overflow:hidden}
 const currentStatus   = document.getElementById('currentStatus');
 const statusLine      = document.getElementById('statusLine');
 const statusLineText  = document.getElementById('statusLineText');
+const taRefreshBtn    = document.getElementById('taRefreshBtn');
 const symbolInput     = document.getElementById('symbolInput');
 const addBtn          = document.getElementById('addBtn');
 const tableBody       = document.getElementById('tableBody');
@@ -869,7 +893,7 @@ const saveMarketData       = () => lsSet('shortfall_market_data', JSON.stringify
 const saveHoldingSignals   = () => lsSet('shortfall_holding_signals', JSON.stringify(holdingSignalCache));
 const saveDcaLog           = () => lsSet('shortfall_dca_log', JSON.stringify(dcaLogCache));
 const saveDayCandles       = () => lsSet('shortfall_day_candle', JSON.stringify(dayCandleCache));
-const saveTaData           = () => lsSet('shortfall_ta_data', JSON.stringify(taCache));
+const saveTaData           = () => { try { localStorage.setItem('shortfall_ta_data', JSON.stringify(taCache)); } catch (e) { setActivityStatus('Storage full — TA updated in memory only.', 'warn'); } };
 
 function buildPortfolioMap() {
   portfolioMap = {};
@@ -1170,6 +1194,7 @@ function getDisplayChange(id) {
 }
 
 async function fetchTaHistory(id) {
+  fetchTaHistory.lastErr = null;
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
@@ -1178,8 +1203,8 @@ async function fetchTaHistory(id) {
     finally { clearTimeout(timeoutId); }
     if (!res.ok) throw new Error(`HTTP_ERROR:${res.status}`);
     const data = await res.json();
-    const points = (data.prices || []).filter(p => p && p[1] != null);
-    if (!points.length) return null;
+const points = (data.prices || []).filter(p => p && p[1] != null);
+    if (!points.length) { fetchTaHistory.lastErr = 'empty history'; return null; }
     const lastTs = points[points.length - 1][0];
     const lastIsToday = new Date(lastTs).toISOString().slice(0, 10) === new Date().toISOString().slice(0, 10);
     const usablePoints = lastIsToday ? points.slice(0, -1) : points;
@@ -1187,11 +1212,10 @@ async function fetchTaHistory(id) {
     out.lastTs = usablePoints.length ? usablePoints[usablePoints.length - 1][0] : null; // freshness check
     return out;
   } catch (err) {
+    fetchTaHistory.lastErr = err.name === 'AbortError' ? 'timeout' : (err.message || 'network error');
     return null;
   }
 }
-
-
 // ---- True high/low sources -------------------------------------------------------------------
 // Daily closes are one snapshot per day and never see intraday wicks, so extremes built from them
 // understate the real range. Two CoinGecko sources fix that:
@@ -1299,6 +1323,7 @@ async function fetchTaForPortfolio(ids, { force = false } = {}) {
         // approximation. Carry the OHLC overlay forward when this coin already has one.
         if (cached.year) recomputedTa.year = cached.year;
         recomputedTa.closesEndTs = cached.closesEndTs;
+        recomputedTa.timestamp = cached.timestamp;
         if (cached.rollingExtremesSource === 'ohlc' || cached.rollingExtremesSource === 'hourly') {
           recomputedTa.rollingHighSrc = cached.rollingHighSrc; recomputedTa.rollingLowSrc = cached.rollingLowSrc;
           recomputedTa.rollingHigh = cached.rollingHigh;
@@ -1332,19 +1357,27 @@ async function fetchTaForPortfolio(ids, { force = false } = {}) {
   });
   if (!stale.length || taFetchInFlight) return;
   taFetchInFlight = true;
+  taRefreshBtn?.classList.add('spinning');
   try {
-  let updated = 0, auditFailures = 0, staleFeeds = 0;
-  for (const id of stale) {
-    const closes = await fetchTaHistory(id);
-    // Freshness guard: a daily series that ends days ago makes every window, RSI and EMA read from
-    // the wrong dates. Reject it and keep whatever was cached instead of silently using it.
-    if (closes && (closes.lastTs == null || Date.now() - closes.lastTs > TA_MAX_DATA_AGE_MS)) {
-      staleFeeds++;
-      setActivityStatus(`Daily history for ${id} ends ${closes.lastTs ? new Date(closes.lastTs).toISOString().slice(0, 10) : 'at an unknown date'} — too old, discarded.`, 'warn');
-      await new Promise(r => setTimeout(r, TA_FETCH_DELAY_MS));
-      continue;
-    }
-    if (closes) {
+    let updated = 0, auditFailures = 0, staleFeeds = 0, failed = 0, lastErr = '';
+    for (let i = 0; i < stale.length; i++) {
+      const id = stale[i];
+      setActivityStatus(`Updating TA (${i + 1}/${stale.length}: ${id})…`, 'info');
+      const closes = await fetchTaHistory(id);
+      if (!closes) {
+        failed++;
+        lastErr = fetchTaHistory.lastErr || lastErr;
+        await new Promise(r => setTimeout(r, TA_FETCH_DELAY_MS));
+        continue;
+      }
+      // Freshness guard: a daily series that ends days ago makes every window, RSI and EMA read from
+      // the wrong dates. Reject it and keep whatever was cached instead of silently using it.
+      if (closes.lastTs == null || Date.now() - closes.lastTs > TA_MAX_DATA_AGE_MS) {
+        staleFeeds++;
+        setActivityStatus(`Daily history for ${id} ends ${closes.lastTs ? new Date(closes.lastTs).toISOString().slice(0, 10) : 'at an unknown date'} — too old, discarded.`, 'warn');
+        await new Promise(r => setTimeout(r, TA_FETCH_DELAY_MS));
+        continue;
+      }
       const ta = computeTaFromCloses(closes);
       if (ta && auditTa(ta)) {
         ta.closesEndTs = closes.lastTs;
@@ -1369,29 +1402,26 @@ async function fetchTaForPortfolio(ids, { force = false } = {}) {
         ta.fetchVersion = TA_FETCH_VERSION;
         taCache[id] = ta;
         updated++;
-      } else if (ta) {
+        saveTaData();
+        lastTaTime = Date.now();
+        lsSet('shortfall_ta_time', lastTaTime);
+        recomputeHoldingSignals();
+        updatePricesInTable();
+        updateScheduledStatus();
+      } else {
         auditFailures++;
-        setActivityStatus(`TA audit failed for ${id} — one or more indicators returned NaN, discarding this fetch.`, 'warn');
+        setActivityStatus(`TA ${ta ? 'audit failed' : 'history too short'} for ${id} — keeping previous values.`, 'warn');
       }
+      await new Promise(r => setTimeout(r, TA_FETCH_DELAY_MS));
     }
-    await new Promise(r => setTimeout(r, TA_FETCH_DELAY_MS));
-  }
-  saveTaData();
-  if (updated > 0) {
-    lastTaTime = Date.now();
-    lsSet('shortfall_ta_time', lastTaTime);
-    recomputeHoldingSignals();
-    updatePricesInTable();
-    updateScheduledStatus();
-  }
-  setActivityStatus(`TA history updated (${updated}/${stale.length}).${auditFailures ? ` ${auditFailures} discarded on audit failure.` : ''}${staleFeeds ? ` ${staleFeeds} discarded as stale (history ended >3d ago).` : ''}`, updated > 0 ? 'ok' : 'warn');
+    setActivityStatus(`TA history updated (${updated}/${stale.length}).${failed ? ` ${failed} failed${lastErr ? ` (${lastErr})` : ''}.` : ''}${auditFailures ? ` ${auditFailures} discarded on audit failure.` : ''}${staleFeeds ? ` ${staleFeeds} discarded as stale (history ended >3d ago).` : ''}`, updated > 0 && !failed ? 'ok' : 'warn');
   } catch (err) {
     setActivityStatus('TA refresh hit an unexpected error — will retry on the next cycle.', 'warn');
   } finally {
     taFetchInFlight = false;
+    taRefreshBtn?.classList.remove('spinning');
   }
 }
-
 
 // CoinGecko's OHLC candles are 4 days wide this far back, so the timestamp we get for the
 // high/low candle only pins the wick to "somewhere near this day" — it can land a few days off
@@ -3013,10 +3043,11 @@ function expandRowCore(tr, item, forceReExpand) {
   const rsiTxtN = (v, approx) => `${D}RSI ${v == null ? '—' : (approx ? '~' : '') + v.toFixed(1)}`;
   const rsiTxt = (v, approx) => v == null ? '' : `${D}RSI ${approx ? '~' : ''}${v.toFixed(1)}`;
 
+const todayOpenChg = (hasRange && cmp != null) ? (cmp - dayC.open) / dayC.open * 100 : null;
   const todayHtml = hasRange
     ? rng('Today', barLow, barHigh, {
         open: dayC.open,
-        l: `<b>${sgn((cmp - barLow) / barLow * 100)}</b>${D}open ${fmt(dayC.open)}`,
+        l: `<b>${sgn((cmp - barLow) / barLow * 100)}</b>${D}#Open ${fmt(dayC.open)} <b class="${todayOpenChg == null ? '' : todayOpenChg >= 0 ? 'buy' : 'sell'}">${sgn(todayOpenChg)}</b>`,
         r: `<b>${sgn(-(barHigh - cmp) / barHigh * 100)}</b>${D}${new Date(dayC.fetchedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
       })
     : `<div class="dx-blk"><div class="dx-rng"><b>Today</b><span style="grid-column:2/-1;font-family:var(--font-ui)">${dayC ? 'Range unavailable — CoinGecko is missing a candle' : candleMsg}</span></div></div>`;
@@ -3038,13 +3069,12 @@ function expandRowCore(tr, item, forceReExpand) {
     l: `<b>${sgn(pctAboveAtl)}</b>${D}${ta.isLiveAtl ? 'today⚡' : (atlDays == null ? '—' : atlDays + 'd')}`,
     r: `<b>${sgn(ta.athPct)}</b>${D}${ta.isLiveAth ? 'today⚡' : (athDays == null ? '—' : athDays + 'd')}`
   });
-  // Rolling 24h range (CoinGecko). The live price can only widen it (it is a real observed price).
-  const rollChg = getRollingChangePct(item.id);
+// Rolling 24h range (CoinGecko). The live price can only widen it (it is a real observed price).
   const h24Lo = ta.low24h != null ? (cmp != null ? Math.min(ta.low24h, cmp) : ta.low24h) : null;
   const h24Hi = ta.high24h != null ? (cmp != null ? Math.max(ta.high24h, cmp) : ta.high24h) : null;
   const h24Html = rng('24h', h24Lo, h24Hi, {
     l: `<b>${sgn(h24Lo != null && cmp != null ? (cmp - h24Lo) / h24Lo * 100 : null)}</b>${D}rolling`,
-    r: `<b>${sgn(h24Hi != null && cmp != null ? -(h24Hi - cmp) / h24Hi * 100 : null)}</b>${D}move <b class="${rollChg == null ? '' : rollChg >= 0 ? 'buy' : 'sell'}">${sgn(rollChg)}</b>`
+    r: `<b>${sgn(h24Hi != null && cmp != null ? -(h24Hi - cmp) / h24Hi * 100 : null)}</b>`
   });
 
   // ---- momentum + liquidity ----
@@ -3280,6 +3310,11 @@ async function discoverCandidates() {
 
 discoverBtn.onclick = discoverCandidates;
 
+taRefreshBtn.addEventListener('click', () => {
+  if (taFetchInFlight) { setActivityStatus('TA refresh already running…', 'info'); return; }
+  const ids = [...new Set([...saved.map(s => s.id).filter(Boolean), 'bitcoin'])];
+  fetchTaForPortfolio(ids, { force: true });
+});
 gainHeader.addEventListener('click', () => {
   sortDir = currentSortColumn === 'gain' ? (sortDir === 'desc' ? 'asc' : 'desc') : 'desc';
   currentSortColumn = 'gain';
