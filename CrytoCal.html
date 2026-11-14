@@ -300,6 +300,41 @@
     .refresh-btn:hover {
       background: rgba(0, 122, 255, 0.1);
     }
+    .low-cost-actions {
+      display: flex;
+      justify-content: flex-end;
+      margin: 8px 0 0;
+    }
+    .btn-copy-holdings {
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--accent);
+      border-radius: 7px;
+      padding: 6px 9px;
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .btn-copy-holdings {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+    }
+    .copy-icon {
+      width: 13px;
+      height: 13px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      flex: 0 0 auto;
+    }
+    .btn-copy-holdings:active {
+      opacity: 0.7;
+    }
   </style>
 </head>
 <body>
@@ -352,7 +387,7 @@
         </div>
       </div>
       <div class="avg-display" id="dcaTargetDisplay">Target Selling Price: ₹0.00</div>
-      <div class="info-row">Low-Cost Holdings With Average Cost Below <span style="color:var(--highlight-red);font-weight:bold">₹0.00</span> <span style="color:var(--accent);font-size:10px">(Target Selling price after fees deducted.)</span></div>
+      <div class="info-row" id="dcaInfoRow">Low-Cost Holdings With Average Cost Below <span style="color:var(--highlight-red);font-weight:bold">₹0.00</span> <span style="color:var(--accent);font-size:10px">(Target Selling price after fees deducted.)</span><div class="low-cost-actions"><button type="button" class="btn-copy-holdings" data-copy-amount="dcaExtraInvested" data-copy-coins="dcaExtraCoins"><svg class="copy-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8" y="8" width="13" height="13" rx="2"></rect><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"></path></svg><span>All</span></button></div></div>
       <div class="row">
         <div class="col field"><label>Low-Cost Amount ₹</label><input type="text" inputmode="decimal" autocomplete="off" class="multi-entry" id="dcaExtraInvested"></div>
         <div class="col field"><label>Low-Cost Coins</label><input type="text" inputmode="decimal" autocomplete="off" class="multi-entry" id="dcaExtraCoins"></div>
@@ -393,6 +428,7 @@
       <div class="info-row" id="sellInfoRow">
         Low-Cost Holdings With Average Cost Below <span style="color:var(--highlight-red);font-weight:bold">₹0.00</span>
         <span style="color:var(--accent);font-size:10px">(Selling price after fees deducted)</span>
+        <div class="low-cost-actions"><button type="button" class="btn-copy-holdings" data-copy-amount="sellExtraInvested" data-copy-coins="sellExtraCoins"><svg class="copy-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8" y="8" width="13" height="13" rx="2"></rect><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"></path></svg><span>All</span></button></div>
       </div>
       <div class="row">
         <div class="col field"><label>Low-Cost Amount ₹</label><input type="text" inputmode="decimal" autocomplete="off" class="multi-entry" id="sellExtraInvested" placeholder="0"></div>
@@ -442,6 +478,7 @@
       <div class="info-row" id="plannedInfoRow">
         Low-Cost Holdings With Average Cost Below <span style="color:var(--highlight-red);font-weight:bold">₹0.00</span>
         <span style="color:var(--accent);font-size:10px">(Target selling price after fees deducted)</span>
+        <div class="low-cost-actions"><button type="button" class="btn-copy-holdings" data-copy-amount="plannedExtraInvested" data-copy-coins="plannedExtraCoins"><svg class="copy-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8" y="8" width="13" height="13" rx="2"></rect><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"></path></svg><span>All</span></button></div>
       </div>
       <div class="row">
         <div class="col field"><label>Low-Cost Amount ₹</label><input type="text" inputmode="decimal" autocomplete="off" class="multi-entry" id="plannedExtraInvested"></div>
@@ -514,6 +551,7 @@
       Low-Cost Holdings among <span id="withdrawLowCostCoinsDisplay" style="color:var(--accent);font-weight:bold">0</span> withdrawal coins With Average Cost Below
       <span style="color:var(--highlight-red);font-weight:bold">₹<span id="effectiveWithdrawPrice">0.00</span></span>
       <span style="color:var(--accent);font-size:10px"> (Target Selling price after fees deducted)</span>
+      <div class="low-cost-actions"><button type="button" class="btn-copy-holdings" data-copy-action="withdrawal"><svg class="copy-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8" y="8" width="13" height="13" rx="2"></rect><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"></path></svg><span>FIFO</span></button></div>
     </div>
     
     <div class="row" style="margin-top:16px;">
@@ -547,6 +585,7 @@
       With Average Cost Below
       <span style="color:var(--highlight-red);font-weight:bold">₹<span id="targetEffectivePrice">0.00</span></span>
       <span style="color:var(--accent);font-size:10px"> (Net Selling price after fees deducted)</span>
+      <div class="low-cost-actions"><button type="button" class="btn-copy-holdings" data-copy-action="remaining"><svg class="copy-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8" y="8" width="13" height="13" rx="2"></rect><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"></path></svg><span>Remaining</span></button></div>
     </div>
     
     <div class="row" style="margin-top:16px;">
@@ -762,7 +801,7 @@
 
       targetDisplay.innerHTML = `Target Selling Price: <span style="color:var(--highlight-red);font-weight:bold">${formatINR(previewTargetPrice)}</span>`;
 
-      infoRow.innerHTML = `Low-Cost Holdings With Average Cost Below <span style="color:var(--highlight-red);font-weight:bold">${formatINR(previewNetAfterFee)}</span> <span style="color:var(--accent);font-size:10px">(Target Selling price after fees deducted.)</span>`;
+      infoRow.innerHTML = `Low-Cost Holdings With Average Cost Below <span style="color:var(--highlight-red);font-weight:bold">${formatINR(previewNetAfterFee)}</span> <span style="color:var(--accent);font-size:10px">(Target Selling price after fees deducted.)</span><div class="low-cost-actions"><button type="button" class="btn-copy-holdings" data-copy-amount="dcaExtraInvested" data-copy-coins="dcaExtraCoins"><svg class="copy-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8" y="8" width="13" height="13" rx="2"></rect><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"></path></svg><span>All</span></button></div>`;
 
       const targetInput = parseFloat(increaseEl.value) || 0;
       const extraInv = getMultiValue(extraInvestedEl);
@@ -930,7 +969,7 @@ const desiredPct = dcaProfitVal === "" ? 10 : parseFloat(dcaProfitVal);
       const previewNetAfterFee = previewPrice * (1 - fee / 100);
 
       targetDisplay.innerHTML = `Target Selling Price: <span style="color:var(--highlight-red);font-weight:bold">${formatINR(previewPrice)}</span>`;
-      infoRow.innerHTML = `Low-Cost Holdings With Average Cost Below <span style="color:var(--highlight-red);font-weight:bold">${formatINR(previewNetAfterFee)}</span> <span style="color:var(--accent);font-size:10px">(Selling price after fees deducted)</span>`;
+      infoRow.innerHTML = `Low-Cost Holdings With Average Cost Below <span style="color:var(--highlight-red);font-weight:bold">${formatINR(previewNetAfterFee)}</span> <span style="color:var(--accent);font-size:10px">(Selling price after fees deducted)</span><div class="low-cost-actions"><button type="button" class="btn-copy-holdings" data-copy-amount="sellExtraInvested" data-copy-coins="sellExtraCoins"><svg class="copy-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8" y="8" width="13" height="13" rx="2"></rect><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"></path></svg><span>All</span></button></div>`;
 
       const C = GLOBAL.invested || 0;
       const N = GLOBAL.coins || 0;
@@ -1021,7 +1060,7 @@ const desiredPct = sellProfitVal === "" ? 10 : parseFloat(sellProfitVal);
 
       targetDisplay.innerHTML = `Net Selling Price: <span style="color:var(--highlight-red);font-weight:bold">${formatINR(targetPrice)}</span>`;
       
-      infoRow.innerHTML = `Low-Cost Holdings With Average Cost Below <span style="color:var(--highlight-red);font-weight:bold">${formatINR(finalNet)}</span> <span style="color:var(--accent);font-size:10px">(Net Selling price after fees deducted)</span>`;
+      infoRow.innerHTML = `Low-Cost Holdings With Average Cost Below <span style="color:var(--highlight-red);font-weight:bold">${formatINR(finalNet)}</span> <span style="color:var(--accent);font-size:10px">(Net Selling price after fees deducted)</span><div class="low-cost-actions"><button type="button" class="btn-copy-holdings" data-copy-amount="sellExtraInvested" data-copy-coins="sellExtraCoins"><svg class="copy-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8" y="8" width="13" height="13" rx="2"></rect><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"></path></svg><span>All</span></button></div>`;
 
       const basePrice = (C / N) || 0;
       const significantChange = oldCoins > 0 && Math.abs(targetPrice - basePrice) > 0.01;
@@ -1153,7 +1192,7 @@ const desiredPct = sellProfitVal === "" ? 10 : parseFloat(sellProfitVal);
       const previewNetAfterFee = previewPrice * (1 - fee / 100);
 
       targetDisplay.innerHTML = `Target Selling Price: <span style="color:var(--highlight-red);font-weight:bold">${formatINR(previewPrice)}</span>`;
-      infoRow.innerHTML = `Low-Cost Holdings With Average Cost Below <span style="color:var(--highlight-red);font-weight:bold">${formatINR(previewNetAfterFee)}</span> <span style="color:var(--accent);font-size:10px">(Target selling price after fees deducted)</span>`;
+      infoRow.innerHTML = `Low-Cost Holdings With Average Cost Below <span style="color:var(--highlight-red);font-weight:bold">${formatINR(previewNetAfterFee)}</span> <span style="color:var(--accent);font-size:10px">(Target selling price after fees deducted)</span><div class="low-cost-actions"><button type="button" class="btn-copy-holdings" data-copy-amount="plannedExtraInvested" data-copy-coins="plannedExtraCoins"><svg class="copy-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8" y="8" width="13" height="13" rx="2"></rect><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"></path></svg><span>All</span></button></div>`;
 
       const planned = parseFloat(plannedDCAEl.value) || 0;
       const D = parseFloat(plannedRateEl.value) || 0;
@@ -1217,7 +1256,7 @@ const desiredPct = plannedProfitVal === "" ? 10 : parseFloat(plannedProfitVal);
       const finalNet = finalPrice * (1 - fee / 100);
 
       targetDisplay.innerHTML = `Target Selling Price: <span style="color:var(--highlight-red);font-weight:bold">${formatINR(finalPrice)}</span>`;
-      infoRow.innerHTML = `Low-Cost Holdings With Average Cost Below <span style="color:var(--highlight-red);font-weight:bold">${formatINR(finalNet)}</span> <span style="color:var(--accent);font-size:10px">(Target selling price after fees deducted)</span>`;
+      infoRow.innerHTML = `Low-Cost Holdings With Average Cost Below <span style="color:var(--highlight-red);font-weight:bold">${formatINR(finalNet)}</span> <span style="color:var(--accent);font-size:10px">(Target selling price after fees deducted)</span><div class="low-cost-actions"><button type="button" class="btn-copy-holdings" data-copy-amount="plannedExtraInvested" data-copy-coins="plannedExtraCoins"><svg class="copy-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8" y="8" width="13" height="13" rx="2"></rect><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"></path></svg><span>All</span></button></div>`;
 
       if (extraC > 0 && (extraInv / extraC) > finalNet + 0.01) {
         placeholder.style.display = 'block';
@@ -1757,6 +1796,89 @@ const desiredPct = (remProfitInput === "" || remProfitInput === undefined) ? 10 
       document.getElementById('currentAvg').innerHTML = `Current Average: <span style="color:var(--highlight-red);font-weight:bold">${formatINR(avg)}</span>`;
     }
 
+    function copyCurrentHoldingsToLowCost(amountId, coinsId) {
+      const amountInput = document.getElementById(amountId);
+      const coinsInput = document.getElementById(coinsId);
+      if (!amountInput || !coinsInput) return;
+
+      amountInput.value = GLOBAL.invested > 0 ? String(GLOBAL.invested) : '';
+      coinsInput.value = GLOBAL.coins > 0 ? String(GLOBAL.coins) : '';
+
+      const totalBox = document.querySelector(
+        `.multi-total[data-amount="${amountId}"][data-coins="${coinsId}"]`
+      );
+      refreshMultiTotal(totalBox);
+
+      if (amountId === 'dcaExtraInvested') updateDCA();
+      if (amountId === 'sellExtraInvested') updateSell();
+      if (amountId === 'plannedExtraInvested') updatePlanned();
+    }
+
+    function copyPlannedWithdrawalHoldings(type) {
+      const fee = GLOBAL.fee || 0.4;
+      const currentInvestment = GLOBAL.invested || 0;
+      const currentCoins = GLOBAL.coins || 0;
+      const netGoal = parseFloat(document.getElementById('withdrawNet')?.value) || 0;
+      const sellPrice = parseFloat(document.getElementById('withdrawPrice')?.value) || 0;
+      const fifoInvestment = getMultiValue('withdrawInvested');
+
+      if (currentInvestment <= 0 || currentCoins <= 0 || netGoal <= 0 || sellPrice <= 0 || fifoInvestment <= 0) {
+        alert('Complete Current Holdings, Net Withdrawal Amount, Withdrawal Sell Price, and FIFO Invested Amount first.');
+        return;
+      }
+
+      const grossNeeded = netGoal / ((1 - fee / 100) * (1 - TDS_RATE));
+      const withdrawalCoins = grossNeeded / sellPrice;
+      if (!Number.isFinite(withdrawalCoins) || withdrawalCoins <= 0 || withdrawalCoins > currentCoins) {
+        alert('The withdrawal inputs do not produce a valid withdrawal quantity within your current holdings.');
+        return;
+      }
+
+      let amountId;
+      let coinsId;
+      let amount;
+      let coins;
+
+      if (type === 'withdrawal') {
+        const effectivePrice = sellPrice * (1 - fee / 100);
+        const averageCost = fifoInvestment / withdrawalCoins;
+        if (averageCost >= effectivePrice) {
+          alert('The FIFO average cost is not below the effective withdrawal selling price. These withdrawal holdings do not qualify as low-cost holdings.');
+          return;
+        }
+        amountId = 'withdrawProfitInvested';
+        coinsId = 'withdrawProfitCoins';
+        amount = fifoInvestment;
+        coins = withdrawalCoins;
+      } else {
+        amountId = 'remainingProfitInvested';
+        coinsId = 'remainingProfitCoins';
+        amount = Math.max(0, currentInvestment - fifoInvestment);
+        coins = Math.max(0, currentCoins - withdrawalCoins);
+        if (amount <= 0 || coins <= 0) {
+          alert('There are no remaining holdings to copy.');
+          return;
+        }
+      }
+
+      const amountInput = document.getElementById(amountId);
+      const coinsInput = document.getElementById(coinsId);
+      if (!amountInput || !coinsInput) return;
+
+      amountInput.value = String(amount);
+      coinsInput.value = String(coins);
+      const totalBox = document.querySelector(
+        `.multi-total[data-amount="${amountId}"][data-coins="${coinsId}"]`
+      );
+      refreshMultiTotal(totalBox);
+
+      if (type === 'withdrawal') updateWithdraw();
+      else {
+        updateWithdraw();
+        updatePostWithdraw(false);
+      }
+    }
+
     function updateGlobalFromDashboard() {
       GLOBAL.invested = parseFloat(document.getElementById('globalInvested').value) || 0;
       GLOBAL.coins = parseFloat(document.getElementById('globalCoins').value) || 0;
@@ -1853,6 +1975,16 @@ const desiredPct = (remProfitInput === "" || remProfitInput === undefined) ? 10 
         });
       });
       refreshAllMultiTotals();
+
+      document.addEventListener('click', event => {
+        const button = event.target.closest('.btn-copy-holdings');
+        if (!button) return;
+        if (button.dataset.copyAction) {
+          copyPlannedWithdrawalHoldings(button.dataset.copyAction);
+          return;
+        }
+        copyCurrentHoldingsToLowCost(button.dataset.copyAmount, button.dataset.copyCoins);
+      });
 
       document.querySelectorAll('#globalContent input').forEach(input => {
         input.addEventListener('input', () => {
