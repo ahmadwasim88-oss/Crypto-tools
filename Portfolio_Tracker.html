@@ -827,9 +827,10 @@ const RSI_OVERSOLD_CEIL = 35;        // tightened from 45: 45 is near-neutral, n
 // looks at each coin's own 97th percentile rather than its 85th.
 const RSI_OVERBOUGHT_PERCENTILE = 97;
 const RSI_OVERBOUGHT_MIN_SAMPLES = 60;
-const RSI_OVERBOUGHT_FLOOR = 80;
-const RSI_OVERBOUGHT_CEIL = 92;
-
+const RSI_OVERBOUGHT_FLOOR = 78;
+const RSI_OVERBOUGHT_CEIL = 90;
+const SWING_TRIM_EMA_STRETCH_PCT = 40; // must be ≥40% above 200d EMA...
+const SWING_TRIM_SURGE_30D_PCT = 50;   // ...or up ≥50% over 30 days (room to buy back lower)
 function percentileOf(sortedAsc, pct) {
   if (!sortedAsc || !sortedAsc.length) return null;
   const idx = Math.floor((pct / 100) * (sortedAsc.length - 1));
@@ -847,7 +848,7 @@ const DISCOVER_MAX_TA_FETCHES = 25;
 
 const EMA_TREND_LONG = 200;
 
-const TA_LOGIC_VERSION = 25; // 24: stricter last-DCA gap gate (10–20%, scaled at 4× average daily move) shared by holdings signals and diagnostics; 23: holdings gate + Discover share pickRefWindow (qualified window, else closest-to-oversold); 22: add/swing gates use an RSI-qualified low/high (90→180→365d); earlier: ACCUMULATE RSI tightened (10th pct, ceiling 35) + last closed-day RSI must be oversold; overbought band 80-92 (97th pct)
+const TA_LOGIC_VERSION = 26; // 24: stricter last-DCA gap gate (10–20%, scaled at 4× average daily move) shared by holdings signals and diagnostics; 23: holdings gate + Discover share pickRefWindow (qualified window, else closest-to-oversold); 22: add/swing gates use an RSI-qualified low/high (90→180→365d); earlier: ACCUMULATE RSI tightened (10th pct, ceiling 35) + last closed-day RSI must be oversold; overbought band 80-92 (97th pct)
 const TA_FETCH_VERSION = 7; // bumped: 90d extremes now from hourly data (exact window) + in-window OHLC wicks; 365d extremes from OHLC wicks
 
 // Corrupt or missing storage must never stop the page from starting: fall back to an empty value instead of throwing.
@@ -1625,14 +1626,12 @@ function classifyHolding(md, item, ta, macroTa) {
       signal = 'WAIT'; colorKey = 'hold';
       strength = 25;
       reason = `${depth.toFixed(0)}% below ATH${yrNote} — meaningful discount, but not yet a confirmed add.`;
-    } else if (athPct <= athTiers.watch) {
+} else {
       signal = 'HOLD'; colorKey = 'hold';
       strength = 35;
-      reason = `Only ${depth.toFixed(0)}% below ATH — not a deep enough discount yet.`;
-    } else {
-      signal = 'TRIM'; colorKey = 'trim';
-      strength = 55;
-      reason = `Just ${depth.toFixed(0)}% below ATH — closer to profit-taking than buying.`;
+      reason = athPct <= athTiers.watch
+        ? `Only ${depth.toFixed(0)}% below ATH — not a deep enough discount yet.`
+        : `Within ${depth.toFixed(0)}% of ATH — holding for your target unless an extreme blow-off triggers.`;
     }
   } else {
     signal = 'HOLD'; colorKey = 'hold';
@@ -1828,20 +1827,35 @@ function classifyHolding(md, item, ta, macroTa) {
   const lean = (dToLow != null && dToHigh != null && dToHigh < dToLow) ? 'swing' : 'add';
   let nearHigh = false;
   const swingHigh = gateHigh ?? effectiveHigh;
-  if (effectiveHigh != null && cur != null && signal !== 'EXIT' && signal !== 'AT RISK' && signal !== 'ACCUMULATE' && signal !== 'TRIM') {
+const swingWindow = gateHighWindow;
+  const emaStretchPct = (liveEmaLong != null && liveEmaLong > 0 && cur != null) ? (cur - liveEmaLong) / liveEmaLong * 100 : null;
+  const surge30dPct = md.change_30d ?? calcReturnPct(liveCloses, 30);
+  if (swingHigh != null && cur != null && signal !== 'EXIT' && signal !== 'AT RISK' && signal !== 'ACCUMULATE' && signal !== 'TRIM') {
     const belowHighPct = (swingHigh - cur) / swingHigh * 100;
     const nearHighThresholdPct = ta?.nearLowThresholdPct ?? DCA_DIP_NEAR_PCT;
     nearHigh = belowHighPct <= nearHighThresholdPct;
     const rsiOverboughtThreshold = ta?.rsiOverboughtThreshold ?? RSI_OVERBOUGHT;
-    const rsiOverbought = liveRsi != null && liveRsi >= rsiOverboughtThreshold;
-    const windowLabel = gateHighWindow;
-    if (nearHigh && rsiOverbought) {
+    const rsiLiveOverbought = liveRsi != null && liveRsi >= rsiOverboughtThreshold;
+    const rsiClosedOverbought = ta?.rsi != null && ta.rsi >= rsiOverboughtThreshold;
+    const rsiOverbought = rsiLiveOverbought && rsiClosedOverbought;
+    const emaStretched = emaStretchPct != null && emaStretchPct >= SWING_TRIM_EMA_STRETCH_PCT;
+    const surgeStretched = surge30dPct != null && surge30dPct >= SWING_TRIM_SURGE_30D_PCT;
+    const parabolicStretched = emaStretched || surgeStretched;
+    const windowLabel = swingWindow;
+    if (nearHigh && rsiOverbought && parabolicStretched) {
       signal = 'SWING TRIM'; colorKey = 'swing';
-      strength = Math.max(strength, 50);
+      strength = Math.max(strength, 65);
+      const stretchBits = [
+        emaStretched ? `+${emaStretchPct.toFixed(0)}% above EMA-200` : null,
+        surgeStretched ? `+${surge30dPct.toFixed(0)}% in 30d` : null
+      ].filter(Boolean).join(' & ');
       const targetNote = item.target != null ? ` Still well short of your ₹${item.target} target, so this is a partial-profit/rebuy-lower play, not an exit.` : '';
-      reason = `${belowHighPct.toFixed(1)}% below its ${windowLabel}d high (within its own ≤${nearHighThresholdPct.toFixed(1)}% band), RSI ${liveRsi.toFixed(2)} (overbought vs this coin's own ≥${rsiOverboughtThreshold.toFixed(0)} top zone) — a reasonable spot to trim into strength.${targetNote}`;
-    } else if (lean === 'swing' && addReasonShown && signal === 'WAIT') {
-      // The coin is nearer its range top than its range low, so explain the trim question, not the add one.
+      reason = `${belowHighPct.toFixed(1)}% below its ${windowLabel}d high (≤${nearHighThresholdPct.toFixed(1)}% band), live & closed RSI extreme (${liveRsi.toFixed(1)} / ${ta.rsi.toFixed(1)} ≥${rsiOverboughtThreshold.toFixed(0)}), and stretched (${stretchBits}) — extreme spike with room to buy back lower.${targetNote}`;
+    } else if (nearHigh && rsiLiveOverbought && !rsiClosedOverbought) {
+      reason = `${belowHighPct.toFixed(1)}% below its ${windowLabel}d high and live RSI ${liveRsi.toFixed(2)} is overbought (≥${rsiOverboughtThreshold.toFixed(0)}), but the last daily close (RSI ${ta?.rsi == null ? '—' : ta.rsi.toFixed(2)}) hasn't confirmed it yet — waiting for a daily close.`;
+    } else if (nearHigh && rsiOverbought && !parabolicStretched) {
+      reason = `${belowHighPct.toFixed(1)}% below its ${windowLabel}d high with extreme RSI (${liveRsi.toFixed(1)}), but not parabolic enough yet (needs ≥+${SWING_TRIM_EMA_STRETCH_PCT}% above EMA-200 or ≥+${SWING_TRIM_SURGE_30D_PCT}% in 30d) — holding to avoid trimming early.`;
+    } else if (lean === 'swing' && ((addReasonShown && signal === 'WAIT') || (athPct != null && athPct > athTiers.watch))) {
       const lead = `${belowHighPct.toFixed(1)}% below its ${windowLabel}d high`;
       reason = nearHigh
         ? `${lead} (within this coin's own ≤${nearHighThresholdPct.toFixed(1)}% band), but RSI (${liveRsi == null ? '—' : liveRsi.toFixed(2)}) hasn't reached this coin's own overbought zone (≥${rsiOverboughtThreshold.toFixed(0)}) yet.`
@@ -1854,7 +1868,7 @@ function classifyHolding(md, item, ta, macroTa) {
   const nearTarget = item.target && cur != null ? (cur >= item.target * (1 - TARGET_PROXIMITY_PCT / 100)) : false;
   if (nearTarget && signal !== 'EXIT' && signal !== 'AT RISK') {
     signal = 'TRIM'; colorKey = 'trim';
-    strength = 55;
+    strength = cur >= item.target ? 80 : 70;
     reason = `Price is at or within ${TARGET_PROXIMITY_PCT}% of your target (₹${item.target}) — worth considering a trim regardless of what the underlying discount signal says.`;
   }
 
@@ -1902,6 +1916,8 @@ function classifyHolding(md, item, ta, macroTa) {
     cmp: cur ?? null,
     relStrengthVsBtc,
     sentiment,
+    emaStretchPct,
+    swingSurge30d: surge30dPct,
     taStale: !ta,
     dcaStreakDay,
   };
@@ -2981,11 +2997,11 @@ function expandRowCore(tr, item, forceReExpand) {
   const osThr = ta.rsiOversoldThreshold ?? RSI_OVERSOLD;
   const obThr = ta.rsiOverboughtThreshold ?? RSI_OVERBOUGHT;
   const aboveLow = (ta.effectiveLow != null && cmp != null) ? (cmp - ta.effectiveLow) / ta.effectiveLow * 100 : null;
-  const gHigh = ta.gateHigh ?? ta.effectiveHigh, gHWd = ta.gateHighWindow ?? wd;
-  const gBelow = (gHigh != null && cmp != null) ? (gHigh - cmp) / gHigh * 100 : null;
-  const gHLvl = gHigh != null ? gHigh * (1 - nearThr / 100) : null;
-  const gHTo = (gHigh != null && cmp != null && cmp > 0) ? (gHigh - cmp) / cmp * 100 : null;
-  const gHBand = (gHigh != null && gHLvl != null) ? (gHigh - gHLvl) / gHLvl * 100 : null;
+  const sHigh = ta.gateHigh ?? ta.effectiveHigh, sHWd = ta.gateHighWindow ?? wd;
+  const sBelow = (sHigh != null && cmp != null) ? (sHigh - cmp) / sHigh * 100 : null;
+  const sHLvl = sHigh != null ? sHigh * (1 - nearThr / 100) : null;
+  const sHTo = (sHigh != null && cmp != null && cmp > 0) ? (sHigh - cmp) / cmp * 100 : null;
+  const sHBand = (sHigh != null && sHLvl != null) ? (sHigh - sHLvl) / sHLvl * 100 : null;
   const gLow = ta.gateLow ?? ta.effectiveLow, gWd = ta.gateLowWindow ?? wd;
   const gAbove = (gLow != null && cmp != null) ? (cmp - gLow) / gLow * 100 : null;
   const gLvl = gLow != null ? gLow * (1 + nearThr / 100) : null;
@@ -3020,7 +3036,7 @@ const lastLog = dcaLogCache[item.id] ?? null;
   else if (ta.signal === 'TRIM') fam = nearTarget ? 'target' : 'trimAth';
   else if (ta.signal === 'SWING TRIM') fam = 'swing';
   else if (ta.signal === 'ACCUMULATE') fam = 'add';
-  else if (ta.signal === 'HOLD') fam = 'hold';
+  else if (ta.signal === 'HOLD') fam = (ta.athPct != null && ta.athPct > athWatch) ? 'swing' : 'hold';
   else fam = ta.lean === 'swing' ? 'swing' : 'add';
 
   let head = '', gates = '';
@@ -3035,9 +3051,17 @@ const lastLog = dcaLogCache[item.id] ?? null;
     head = 'Why trim?';
     gates = gate('ok', 'Shallow discount vs ATH', sgn(ta.athPct), ta.athValue == null ? '' : `${DOT}ATH ${fmt(ta.athValue)}`, ta.athValue == null ? `needs >${sgn(athWatch, 0)}` : `needs >${fmt(ta.athValue * (1 + athWatch / 100))} (>${sgn(athWatch, 0)})`) + targetGate();
   } else if (fam === 'swing') {
-    head = 'Should I trim some? (range top)';
-    gates = gate(gBelow != null && gBelow <= nearThr ? 'ok' : 'no', `Close to ${gHWd}-day high`, awayTxt(gHTo), `${DOT}high ${fmt(gHigh)}`, `needs ≥${fmt(gHLvl)}${gHBand == null ? '' : ` (≤${Math.abs(gHBand).toFixed(1)}%)`}`)
-      + gate(ta.rsi != null && ta.rsi >= obThr ? 'ok' : 'no', 'Overbought now (RSI)', ta.rsi == null ? '—' : ta.rsi.toFixed(1), (ta.rsi == null ? '' : `current${DOT}`) + `needs ≥${obThr.toFixed(0)}`) + targetGate();
+    const emaOk = ta.emaStretchPct != null && ta.emaStretchPct >= SWING_TRIM_EMA_STRETCH_PCT;
+    const surgeOk = ta.swingSurge30d != null && ta.swingSurge30d >= SWING_TRIM_SURGE_30D_PCT;
+    const stretchLabel = emaOk
+      ? `${sgn(ta.emaStretchPct, 0)} vs EMA-200`
+      : (surgeOk ? `${sgn(ta.swingSurge30d, 0)} in 30d` : (ta.emaStretchPct != null ? `${sgn(ta.emaStretchPct, 0)} vs EMA-200` : (ta.swingSurge30d != null ? `${sgn(ta.swingSurge30d, 0)} in 30d` : '—')));
+    head = 'Should I trim some? (extreme spike)';
+    gates = gate(sBelow != null && sBelow <= nearThr ? 'ok' : 'no', `Close to ${sHWd}-day high`, awayTxt(sHTo), `${DOT}high ${fmt(sHigh)}`, `needs ≥${fmt(sHLvl)}${sHBand == null ? '' : ` (≤${Math.abs(sHBand).toFixed(1)}%)`}`)
+      + gate(ta.rsi != null && ta.rsi >= obThr ? 'ok' : 'no', 'Overbought now (RSI)', ta.rsi == null ? '—' : ta.rsi.toFixed(1), (ta.rsi == null ? '' : `current${DOT}`) + `needs ≥${obThr.toFixed(0)}`)
+      + gate(closedRsi == null ? 'na' : closedRsi >= obThr ? 'ok' : 'no', 'Overbought at last close', closedRsi == null ? '—' : closedRsi.toFixed(1), (closedRsi == null ? '' : `last close${DOT}`) + `needs ≥${obThr.toFixed(0)}`)
+      + gate((emaOk || surgeOk) ? 'ok' : (ta.emaStretchPct == null && ta.swingSurge30d == null ? 'na' : 'no'), 'Stretched / parabolic', stretchLabel, '', `needs ≥+${SWING_TRIM_EMA_STRETCH_PCT}% above EMA-200 or ≥+${SWING_TRIM_SURGE_30D_PCT}% in 30d`)
+      + targetGate();
   } else if (fam === 'hold') {
     head = 'Why hold?';
     gates = gate(ta.athPct != null && ta.athPct <= athModerate ? 'ok' : 'no', 'Meaningful discount vs ATH', sgn(ta.athPct), ta.athValue == null ? '' : `${DOT}ATH ${fmt(ta.athValue)}`, ta.athValue == null ? `needs ≤${sgn(athModerate, 0)}` : `needs ≤${fmt(ta.athValue * (1 + athModerate / 100))} (≤${sgn(athModerate, 0)})`)
