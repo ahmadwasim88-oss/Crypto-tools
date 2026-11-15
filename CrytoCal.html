@@ -134,7 +134,7 @@
       color: var(--muted);
       text-align: left;
       margin: 8px 0 2px;
-      padding: 8px;
+      padding: 6px 8px;
       background: rgba(0, 122, 255, 0.05);
       border-radius: 6px;
     }
@@ -303,28 +303,27 @@
     .low-cost-actions {
       display: flex;
       justify-content: flex-end;
-      margin: 8px 0 0;
-    }
-    .btn-copy-holdings {
-      border: 1px solid var(--border);
-      background: var(--surface);
-      color: var(--accent);
-      border-radius: 7px;
-      padding: 6px 9px;
-      font-family: inherit;
-      font-size: 11px;
-      font-weight: 700;
-      cursor: pointer;
+      margin: 4px 0 0;
     }
     .btn-copy-holdings {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      gap: 5px;
+      gap: 4px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--accent);
+      border-radius: 6px;
+      padding: 3px 8px;
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 1.1;
+      cursor: pointer;
     }
     .copy-icon {
-      width: 13px;
-      height: 13px;
+      width: 12px;
+      height: 12px;
       fill: none;
       stroke: currentColor;
       stroke-width: 1.8;
@@ -554,7 +553,7 @@
       <div class="low-cost-actions"><button type="button" class="btn-copy-holdings" data-copy-action="withdrawal"><svg class="copy-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8" y="8" width="13" height="13" rx="2"></rect><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"></path></svg><span>FIFO</span></button></div>
     </div>
     
-    <div class="row" style="margin-top:16px;">
+    <div class="row">
       <div class="col field"><label>Low-Cost Amount ₹</label><input type="text" inputmode="decimal" autocomplete="off" class="multi-entry" id="withdrawProfitInvested"></div>
       <div class="col field"><label>Low-Cost Coins</label><input type="text" inputmode="decimal" autocomplete="off" class="multi-entry" id="withdrawProfitCoins"></div>
     </div>
@@ -588,7 +587,7 @@
       <div class="low-cost-actions"><button type="button" class="btn-copy-holdings" data-copy-action="remaining"><svg class="copy-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8" y="8" width="13" height="13" rx="2"></rect><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"></path></svg><span>Remaining</span></button></div>
     </div>
     
-    <div class="row" style="margin-top:16px;">
+    <div class="row">
       <div class="col field">
         <label>Low-Cost Amount ₹</label>
         <input type="text" inputmode="decimal" autocomplete="off" class="multi-entry" id="remainingProfitInvested">
@@ -772,7 +771,7 @@
     const formatCoins = (num) => (num || 0).toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 6 });
 
     function updateDCA() {
-      const fee = GLOBAL.fee || 0.4;
+      const fee = Number.isFinite(GLOBAL.fee) ? GLOBAL.fee : 0.4;
       const rateEl = document.getElementById('dcaRate');
       const increaseEl = document.getElementById('dcaIncrease');
       const modeEl = document.getElementById('dcaMode');
@@ -808,8 +807,9 @@
       const extraC = getMultiValue(extraCoinsEl);
 
       const lowCostValid = (extraC === 0 && extraInv === 0) || (extraC > 0 && extraInv > 0);
+      const lowCostWithinHoldings = extraC <= GLOBAL.coins + 1e-9 && extraInv <= GLOBAL.invested + 1e-6;
 
-      const isValid = rate > 0 && targetInput > 0 && previewTargetPrice > 0 && GLOBAL.invested > 0 && GLOBAL.coins > 0 && mode !== '' && lowCostValid;
+      const isValid = rate > 0 && targetInput > 0 && previewTargetPrice > 0 && GLOBAL.invested > 0 && GLOBAL.coins > 0 && mode !== '' && lowCostValid && lowCostWithinHoldings;
 
       if (!isValid) {
         placeholder.style.display = 'block';
@@ -823,6 +823,7 @@
         else if (targetInput <= 0) message = 'Please enter a valid Target value';
         else if (mode === '') message = 'Please select a Target Mode (Jump% or Price ₹)';
         else if (!lowCostValid) message = 'Low-Cost Holdings: Enter both amount and coins.';
+        else if (!lowCostWithinHoldings) message = `Low-Cost Holdings cannot exceed Current Holdings (${formatCoins(GLOBAL.coins)} coins, ${formatINR(GLOBAL.invested)}).`;
         placeholder.textContent = message;
         return;
       }
@@ -834,9 +835,9 @@
       const N = GLOBAL.coins;
       const D = rate;
       const dcaProfitVal = document.getElementById('dcaDesiredProfit').value;
-const desiredPct = dcaProfitVal === "" ? 10 : parseFloat(dcaProfitVal);
+      const desiredPct = dcaProfitVal === "" ? 10 : parseFloat(dcaProfitVal);
       const L = GLOBAL.prevLoss;
-      const F = GLOBAL.fee;
+      const F = fee;
 
       const T = previewTargetPrice;
       const targetAfterFee = T * (1 - F / 100);
@@ -900,7 +901,7 @@ const desiredPct = dcaProfitVal === "" ? 10 : parseFloat(dcaProfitVal);
         <div style="margin:16px 0 4px; font-size:13px; font-weight:bold;">Summary After DCA</div>
     <div class="res-row"><span>Total Investment</span><span class="res-val">${formatINR(totalInvFinal)}</span></div>
     <div class="res-row"><span>Total Coins</span><span class="res-val">${formatCoins(totalCoinsFinal)}</span></div>
-    <div class="res-row"><span>New Avgerage Price</span><span class="res-val">${formatINR(newAvg)}</span></div>
+    <div class="res-row"><span>New Average Price</span><span class="res-val">${formatINR(newAvg)}</span></div>
     
     <div class="res-row">
       <span>Target Selling Price</span>
@@ -909,7 +910,7 @@ const desiredPct = dcaProfitVal === "" ? 10 : parseFloat(dcaProfitVal);
     
     <div style="margin:18px 0 6px; font-size:13px; font-weight:bold;">At Target Selling Price</div>
     
-    <div class="res-row"><span>GrossProceeds</span><span class="res-val">${formatINR(totalCoinsFinal * T)}</span></div>
+    <div class="res-row"><span>Gross Proceeds</span><span class="res-val">${formatINR(totalCoinsFinal * T)}</span></div>
     <div class="res-row"><span>Sell Fee (${F}%)</span><span class="res-val negative">-${formatINR(totalCoinsFinal * T * F / 100)}</span></div>
     <div class="res-row"><span>TDS (1%)</span><span class="res-val negative">-${formatINR(tdsAmt)}</span></div>
     <div class="res-row"><span>VDA Tax (31.2%)</span><span class="res-val negative">-${formatINR(dcaTax + extraTax)}</span></div>
@@ -949,7 +950,7 @@ const desiredPct = dcaProfitVal === "" ? 10 : parseFloat(dcaProfitVal);
     }
 
     function updateSell() {
-      const fee = GLOBAL.fee || 0.4;
+      const fee = Number.isFinite(GLOBAL.fee) ? GLOBAL.fee : 0.4;
       const desiredProfitEl = document.getElementById('sellDesiredProfit');
       const extraInvestedEl = document.getElementById('sellExtraInvested');
       const extraCoinsEl = document.getElementById('sellExtraCoins');
@@ -990,7 +991,7 @@ const desiredPct = dcaProfitVal === "" ? 10 : parseFloat(dcaProfitVal);
       const investedExtra = getMultiValue(extraInvestedEl);
       const lowCostValid = (oldCoins === 0 && investedExtra === 0) || (oldCoins > 0 && investedExtra > 0);
 
-      if (!lowCostValid) {
+if (!lowCostValid) {
         placeholder.textContent = 'Low-Cost Holdings: Enter both amount and coins.';
         placeholder.style.display = 'block';
         container.style.display = 'none';
@@ -998,9 +999,17 @@ const desiredPct = dcaProfitVal === "" ? 10 : parseFloat(dcaProfitVal);
         return;
       }
 
+      if (oldCoins > N + 1e-9 || investedExtra > C + 1e-6) {
+        placeholder.textContent = `Low-Cost Holdings cannot exceed Current Holdings (${formatCoins(N)} coins, ${formatINR(C)}).`;
+        placeholder.style.display = 'block';
+        container.style.display = 'none';
+        messageDiv.style.display = 'none';
+        return;
+      }
+
       const sellProfitVal = desiredProfitEl.value;
-const desiredPct = sellProfitVal === "" ? 10 : parseFloat(sellProfitVal);
-      const S = GLOBAL.fee || 0.4;
+      const desiredPct = sellProfitVal === "" ? 10 : parseFloat(sellProfitVal);
+      const S = fee;
 
       placeholder.style.display = 'none';
 
@@ -1169,7 +1178,7 @@ const desiredPct = sellProfitVal === "" ? 10 : parseFloat(sellProfitVal);
     }
 
     function updatePlanned() {
-      const fee = GLOBAL.fee || 0.4;
+      const fee = Number.isFinite(GLOBAL.fee) ? GLOBAL.fee : 0.4;
       const plannedDCAEl = document.getElementById('plannedDCA');
       const plannedRateEl = document.getElementById('plannedRate');
       const desiredProfitEl = document.getElementById('plannedDesiredProfit');
@@ -1214,8 +1223,16 @@ const desiredPct = plannedProfitVal === "" ? 10 : parseFloat(plannedProfitVal);
         return;
       }
 
-      if (!lowCostValid) {
+if (!lowCostValid) {
         placeholder.textContent = 'Low-Cost Holdings: Enter both amount and coins.';
+        placeholder.style.display = 'block';
+        container.style.display = 'none';
+        messageDiv.style.display = 'none';
+        return;
+      }
+
+      if (extraC > N + 1e-9 || extraInv > C + 1e-6) {
+        placeholder.textContent = `Low-Cost Holdings cannot exceed Current Holdings (${formatCoins(N)} coins, ${formatINR(C)}).`;
         placeholder.style.display = 'block';
         container.style.display = 'none';
         messageDiv.style.display = 'none';
@@ -1343,7 +1360,7 @@ const desiredPct = plannedProfitVal === "" ? 10 : parseFloat(plannedProfitVal);
     }
 
     function updateWithdraw() {
-  const fee = GLOBAL.fee || 0.4;
+  const fee = Number.isFinite(GLOBAL.fee) ? GLOBAL.fee : 0.4;
   const C = GLOBAL.invested || 0;
   const N = GLOBAL.coins || 0;
   const netGoal = parseFloat(document.getElementById('withdrawNet')?.value) || 0;
@@ -1403,10 +1420,30 @@ const desiredPct = plannedProfitVal === "" ? 10 : parseFloat(plannedProfitVal);
   const grossNeeded = netGoal / ((1 - fee / 100) * (1 - TDS_RATE));
   const coinsSold = grossNeeded / price;
   
-  if (coinsSold > N) {
+if (coinsSold > N) {
     placeholder.innerHTML = `<div class="warning">Not enough coins!<br>Need ${formatCoins(coinsSold)} but only have ${formatCoins(N)}</div>`;
     placeholder.style.display = 'block';
     resultDiv.style.display = holdingsDiv.style.display = 'none';
+    REMAINING_DATA = { inv: 0, coins: 0, loss: 0 };
+    updatePostWithdraw();
+    return;
+  }
+
+  if (withdrawInvested > C + 1e-6) {
+    placeholder.innerHTML = `<div class="warning">FIFO Invested Amount (${formatINR(withdrawInvested)}) cannot exceed Current Invested Amount (${formatINR(C)}).</div>`;
+    placeholder.style.display = 'block';
+    resultDiv.style.display = holdingsDiv.style.display = 'none';
+    REMAINING_DATA = { inv: 0, coins: 0, loss: 0 };
+    updatePostWithdraw();
+    return;
+  }
+
+  if (profitCoins > coinsSold + 1e-9 || profitInvested > withdrawInvested + 1e-6) {
+    placeholder.innerHTML = `<div class="warning">Low-Cost Holdings cannot exceed withdrawal coins (${formatCoins(coinsSold)}) or FIFO invested amount (${formatINR(withdrawInvested)}).</div>`;
+    placeholder.style.display = 'block';
+    resultDiv.style.display = holdingsDiv.style.display = 'none';
+    REMAINING_DATA = { inv: 0, coins: 0, loss: 0 };
+    updatePostWithdraw();
     return;
   }
   
@@ -1423,6 +1460,8 @@ const desiredPct = plannedProfitVal === "" ? 10 : parseFloat(plannedProfitVal);
         </div>`;
       placeholder.style.display = 'block';
       resultDiv.style.display = holdingsDiv.style.display = 'none';
+      REMAINING_DATA = { inv: 0, coins: 0, loss: 0 };
+      updatePostWithdraw();
       return;
     }
   }
@@ -1592,21 +1631,24 @@ resultDiv.innerHTML = `
   const profitCoins = getMultiValue('remainingProfitCoins');
   const profitInvested = getMultiValue('remainingProfitInvested');
   const remProfitInput = document.getElementById('remainingDesiredProfit')?.value;
-const desiredPct = (remProfitInput === "" || remProfitInput === undefined) ? 10 : parseFloat(remProfitInput);
-  const fee = GLOBAL.fee || 0.4;
+  const desiredPct = (remProfitInput === "" || remProfitInput === undefined) ? 10 : parseFloat(remProfitInput);
+  const fee = Number.isFinite(GLOBAL.fee) ? GLOBAL.fee : 0.4;
 
   // Validation
   const isBasicValid = C > 0 && N > 0 && desiredPct >= 0;
   const lowCostValid = (profitCoins === 0 && profitInvested === 0) ||
                        (profitCoins > 0 && profitInvested > 0);
+  const lowCostWithinRemaining = profitCoins <= N + 1e-9 && profitInvested <= C + 1e-6;
 
-  if (!isBasicValid || !lowCostValid) {
+  if (!isBasicValid || !lowCostValid || !lowCostWithinRemaining) {
     let msg = "Complete withdrawal above + enter desired profit % to see target selling price";
 
     if (!lowCostValid) {
       msg = "Low-Cost Holdings: Enter both amount and coins.";
     } else if (C <= 0 || N <= 0) {
       msg = "Complete the withdrawal section first to see remaining holdings.";
+    } else if (!lowCostWithinRemaining) {
+      msg = `Low-Cost Holdings cannot exceed remaining holdings (${formatCoins(N)} coins, ${formatINR(C)}).`;
     }
 
     if (placeholder) {
@@ -1674,14 +1716,14 @@ const desiredPct = (remProfitInput === "" || remProfitInput === undefined) ? 10 
 
   if (resultDiv) {
     resultDiv.innerHTML = `
-      <div class="summary-box">
+<div class="summary-box">
         <span>Target Selling Price (remaining coins)</span>
-        <h2 id="plannedMain">${formatINR(res.targetPrice)}</h2>
+        <h2 id="spMain">${formatINR(res.targetPrice)}</h2>
       </div>
       <div class="res-group">
         <div style="margin:16px 0 4px;font-size:13px;font-weight:bold;">At Net Selling Price  <span style="color: var(--accent)">(${formatINR(res.targetPrice)})</span></div>
         <div class="res-row"><span>Gross Proceeds</span><span class="res-val">${formatINR(res.totalRecv)}</span></div>
-        <div class="res-row"><span>Fees (${GLOBAL.fee}%)</span><span class="res-val negative">-${formatINR(res.feeAmount)}</span></div>
+        <div class="res-row"><span>Fees (${fee}%)</span><span class="res-val negative">-${formatINR(res.feeAmount)}</span></div>
         <div class="res-row"><span>TDS (1%)</span><span class="res-val negative">-${formatINR(res.tdsAmt)}</span></div>
         <div class="res-row"><span>VDA Tax (31.2%)</span><span class="res-val negative">-${formatINR(res.incomeTax)}</span></div>
         <div class="res-row"><span><strong>Net Amount Received</strong></span><span class="res-val" style="color:var(--accent)">${formatINR(res.netReceived)}</span></div>
@@ -1746,8 +1788,10 @@ const desiredPct = (remProfitInput === "" || remProfitInput === undefined) ? 10 
       document.querySelectorAll('[id*="DesiredProfit"]').forEach(el => el.value = '10');
       document.getElementById('dcaMode').value = localStorage.getItem('dca_mode') || 'percent';
 
-      document.querySelectorAll('#dcaMain, #sellMain, #plannedMain').forEach(el => el.textContent = '₹0');
-      document.querySelectorAll('#dcaResult, #sellResult, #plannedResult, #withdrawResult').forEach(el => el.innerHTML = '');
+      REMAINING_DATA = { inv: 0, coins: 0, loss: 0 };
+
+      document.querySelectorAll('#dcaMain, #sellMain, #plannedMain, #spMain').forEach(el => el.textContent = '₹0');
+      document.querySelectorAll('#dcaResult, #sellResult, #plannedResult, #withdrawResult, #remainingHoldings, #spResult').forEach(el => el.innerHTML = '');
       document.getElementById('dcaTargetDisplay').innerHTML = 'Target Selling Price: ₹0.00';
 
       document.querySelectorAll('.tool-wrapper').forEach(wrapper => {
@@ -1758,6 +1802,10 @@ const desiredPct = (remProfitInput === "" || remProfitInput === undefined) ? 10 
       activeToolId = null;
 
       refreshAllMultiTotals();
+      updateDCA();
+      updateSell();
+      updatePlanned();
+      updateWithdraw();
 
       alert('Everything has been erased and reset!');
     }
@@ -1815,7 +1863,7 @@ const desiredPct = (remProfitInput === "" || remProfitInput === undefined) ? 10 
     }
 
     function copyPlannedWithdrawalHoldings(type) {
-      const fee = GLOBAL.fee || 0.4;
+      const fee = Number.isFinite(GLOBAL.fee) ? GLOBAL.fee : 0.4;
       const currentInvestment = GLOBAL.invested || 0;
       const currentCoins = GLOBAL.coins || 0;
       const netGoal = parseFloat(document.getElementById('withdrawNet')?.value) || 0;
@@ -1882,10 +1930,11 @@ const desiredPct = (remProfitInput === "" || remProfitInput === undefined) ? 10 
     function updateGlobalFromDashboard() {
       GLOBAL.invested = parseFloat(document.getElementById('globalInvested').value) || 0;
       GLOBAL.coins = parseFloat(document.getElementById('globalCoins').value) || 0;
-      GLOBAL.fee = parseFloat(document.getElementById('globalFee').value) || 0.4;
+      const feeRaw = document.getElementById('globalFee').value;
+      const feeParsed = parseFloat(feeRaw);
+      GLOBAL.fee = (feeRaw === '' || !Number.isFinite(feeParsed) || feeParsed < 0) ? 0.4 : feeParsed;
       GLOBAL.prevLoss = parseFloat(document.getElementById('globalPrevLoss').value) || 0;
       updateAvgDisplay();
-      if (activeToolId === 'dca') updateDCA();
       localStorage.setItem('cryptocal_global', JSON.stringify(GLOBAL));
     }
 
@@ -1895,7 +1944,8 @@ const desiredPct = (remProfitInput === "" || remProfitInput === undefined) ? 10 
         const parsed = JSON.parse(saved);
         GLOBAL.invested = parsed.invested || 0;
         GLOBAL.coins = parsed.coins || 0;
-        GLOBAL.fee = parsed.fee || 0.4;
+        const savedFee = Number(parsed.fee);
+        GLOBAL.fee = (parsed.fee !== undefined && parsed.fee !== null && Number.isFinite(savedFee) && savedFee >= 0) ? savedFee : 0.4;
         GLOBAL.prevLoss = parsed.prevLoss || 0;
       }
 
@@ -1949,17 +1999,6 @@ const desiredPct = (remProfitInput === "" || remProfitInput === undefined) ? 10 
       });
     }
 
-    function debounce(func, wait) {
-      let timeout;
-      return function executedFunction(...args) {
-        const later = () => {
-          clearTimeout(timeout);
-          func(...args);
-        };
-        clearTimeout(timeout);
-        timeout = setTimeout(later, wait);
-      };
-    }
 
     window.onload = () => {
       initTools();
@@ -2005,31 +2044,17 @@ const desiredPct = (remProfitInput === "" || remProfitInput === undefined) ? 10 
       ['plannedDCA', 'plannedRate', 'plannedDesiredProfit', 'plannedExtraInvested', 'plannedExtraCoins']
         .forEach(id => document.getElementById(id)?.addEventListener('input', updatePlanned));
 
-      const debounceWithdraw = debounce(updateWithdraw, 600);
-
       ['withdrawNet', 'withdrawPrice', 'withdrawInvested', 'withdrawProfitInvested', 'withdrawProfitCoins']
         .forEach(id => {
-          document.getElementById(id)?.addEventListener('input', () => {
-            updateWithdraw();
-            debounceWithdraw();
-          });
+          document.getElementById(id)?.addEventListener('input', updateWithdraw);
         });
 
-      ['remainingInvested', 'remainingCoins', 'remainingProfitInvested', 'remainingProfitCoins', 'remainingPrevLoss', 'remainingDesiredProfit']
+      ['remainingProfitInvested', 'remainingProfitCoins', 'remainingDesiredProfit']
         .forEach(id => {
           document.getElementById(id)?.addEventListener('input', () => updatePostWithdraw(false));
         });
 
       document.getElementById('spConfirmBtn')?.addEventListener('click', () => updatePostWithdraw(true));
-
-      const originalToggle = toggleDetails;
-      toggleDetails = function(id) {
-        originalToggle(id);
-        if (id === 'dca') updateDCA();
-        if (id === 'sell') updateSell();
-        if (id === 'planned') updatePlanned();
-        if (id === 'withdraw') updateWithdraw();
-      };
 
       const dcaModeEl = document.getElementById('dcaMode');
       if (dcaModeEl) {
