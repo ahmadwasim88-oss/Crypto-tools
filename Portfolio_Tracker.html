@@ -807,6 +807,8 @@ const TA_ALIGN_BUFFER_MS = 15 * 60000;
 const TA_HISTORY_DAYS = 365;
 const TA_FETCH_DELAY_MS = 1500;
 const TA_MAX_DATA_AGE_MS = 3 * 24 * 3600000; // daily history must end within 3 days of now
+const TA_RETRY_COOLDOWN_MS = 30 * 60000;     // wait 30m before retrying a failed/stale TA feed
+const taLastAttempt = {};
 
 const RSI_PERIOD = 14;
 const RSI_OVERSOLD = 30; // fallback only, used when a coin lacks enough RSI history for its own threshold
@@ -1149,7 +1151,7 @@ const CANDLE_MS = 30 * 60000;
 const DAY_CANDLE_REFRESH_MS = 15 * 60000;   // CoinGecko caches OHLC for 15 minutes
 const DAY_CANDLE_RETRY_MS = 5 * 60000;      // back-off after a failed/rejected fetch
 const dayCandleLastAttempt = {};
-let dayCandleInFlight = false;
+const dayCandlePendingIds = new Set();
 
 function utcDayKey(ts) { return new Date(ts).toISOString().slice(0, 10); }
 function utcMidnightOf(ts) { const d = new Date(ts); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()); }
@@ -1181,30 +1183,28 @@ async function fetchDayCandle(id) {
   };
 }
 
-async function refreshDayCandles(ids) {
-  if (dayCandleInFlight) return;
-  const today = utcDayKey(Date.now());
-  const due = ids.filter(id => {
-    const c = dayCandleCache[id];
-    const lastTry = dayCandleLastAttempt[id] || 0;
-    if (Date.now() - lastTry < DAY_CANDLE_RETRY_MS) return false;
-    if (!c || c.dayKey !== today) return true;
-    return Date.now() - c.fetchedAt >= (c.invalid ? DAY_CANDLE_RETRY_MS : DAY_CANDLE_REFRESH_MS);
-  });
-  if (!due.length) return;
-  dayCandleInFlight = true;
+async function ensureDayCandle(id) {
+  if (!id || dayCandlePendingIds.has(id) || document.hidden) return;
+  const now = Date.now();
+  const lastTry = dayCandleLastAttempt[id] || 0;
+  if (now - lastTry < DAY_CANDLE_RETRY_MS) return;
+  const c = dayCandleCache[id];
+  const today = utcDayKey(now);
+  if (c && c.dayKey === today && (now - c.fetchedAt) < (c.invalid ? DAY_CANDLE_RETRY_MS : DAY_CANDLE_REFRESH_MS)) return;
+
+  dayCandlePendingIds.add(id);
+  dayCandleLastAttempt[id] = now;
   try {
-    for (const id of due) {
-      dayCandleLastAttempt[id] = Date.now();
-      const res = await fetchDayCandle(id);
-      if (res !== undefined) { dayCandleCache[id] = res; saveDayCandles(); updatePricesInTable(); }
-      await new Promise(r => setTimeout(r, TA_FETCH_DELAY_MS));
+    const res = await fetchDayCandle(id);
+    if (res !== undefined) {
+      dayCandleCache[id] = res;
+      saveDayCandles();
     }
   } finally {
-    dayCandleInFlight = false;
+    dayCandlePendingIds.delete(id);
+    if (expandedRowId === id) updatePricesInTable();
   }
 }
-
 function getDayCandle(id) {
   const c = dayCandleCache[id];
   return (c && !c.invalid && c.dayKey === utcDayKey(Date.now()) && c.open > 0) ? c : null;
@@ -1387,9 +1387,11 @@ async function fetchTaForPortfolio(ids, { force = false } = {}) {
     setActivityStatus(`Re-applied updated signal logic to ${recomputed} coin(s).`, 'ok');
   }
 
-  const stale = ids.filter(id => {
+const stale = ids.filter(id => {
     const cached = taCache[id];
-    if (force || !cached) return true;
+    if (force) return true;
+    if (Date.now() - (taLastAttempt[id] || 0) < TA_RETRY_COOLDOWN_MS) return false;
+    if (!cached) return true;
     if (cached.fetchVersion !== TA_FETCH_VERSION) return true;
     if (cached.closesEndTs && Date.now() - cached.closesEndTs > TA_MAX_DATA_AGE_MS && Date.now() - cached.timestamp > 6 * 3600000) return true;
     if (cached.version !== TA_LOGIC_VERSION && !hasEnoughHistory(cached)) return true;
@@ -1402,6 +1404,7 @@ async function fetchTaForPortfolio(ids, { force = false } = {}) {
     let updated = 0, auditFailures = 0, staleFeeds = 0, failed = 0, lastErr = '';
     for (let i = 0; i < stale.length; i++) {
       const id = stale[i];
+      taLastAttempt[id] = Date.now();
       setActivityStatus(`Updating TA (${i + 1}/${stale.length}: ${id})…`, 'info');
       const closes = await fetchTaHistory(id);
       if (!closes) {
@@ -2007,6 +2010,7 @@ async function loadCoinList(isApiReachable) {
 
 async function fetchPricesChunk(validIds, attempt = 0) {
   const maxRetries = 2;
+  let lastErr = '';
   while (attempt <= maxRetries) {
     try {
       const controller = new AbortController();
@@ -2045,13 +2049,17 @@ async function fetchPricesChunk(validIds, attempt = 0) {
           marketDataCache[id] = { notFound: true, timestamp: Date.now() };
         }
       });
-      return { updated, total: validIds.length };
+      return { updated, total: validIds.length, err: '' };
     } catch (err) {
+      const msg = err.message || '';
+      const isNet = msg.includes('fetch') || err.name === 'TypeError' || err.name === 'AbortError';
+      lastErr = msg.includes('429') ? '429' : (/5\d{2}/.test(msg) ? '5xx' : (isNet ? 'network' : 'error'));
+      if (lastErr === '429') break; // don't burn more quota retrying into a rate limit
       attempt++;
       if (attempt <= maxRetries) await new Promise(r => setTimeout(r, 3000 * attempt));
     }
   }
-  return { updated: 0, total: validIds.length };
+  return { updated: 0, total: validIds.length, err: lastErr };
 }
 
 async function fetchPrices(ids) {
@@ -2063,6 +2071,7 @@ async function fetchPrices(ids) {
   const chunks = [];
   for (let i = 0; i < validIds.length; i += MAX_IDS_PER_PRICE_CALL) chunks.push(validIds.slice(i, i + MAX_IDS_PER_PRICE_CALL));
 
+  const start = performance.now();
   const results = await Promise.all(chunks.map(chunk => fetchPricesChunk(chunk)));
   const updated = results.reduce((a, r) => a + r.updated, 0);
 
@@ -2072,15 +2081,20 @@ async function fetchPrices(ids) {
     lsSet('shortfall_prices_time', lastPriceTime);
     savePrices();
     updateScheduledStatus();
+    setCurrentStatus(`Live · ${(performance.now() - start).toFixed(0)}ms`, updated === validIds.length ? 'ok' : 'warn');
+    if (apiWasDown) { setActivityStatus('API reachable again.', 'ok'); apiWasDown = false; }
+    if (updated < validIds.length) setActivityStatus(`Prices partially updated (${updated}/${validIds.length}).`, 'warn');
+    return true;
   }
 
-  if (updated === validIds.length) {
-    return true;
-  } else if (updated > 0) {
-    setActivityStatus(`Prices partially updated (${updated}/${validIds.length}).`, 'warn');
-    return true;
-  }
-  setActivityStatus('Price update failed — showing cached prices.', 'error');
+  const errType = results.find(r => r.err)?.err || 'error';
+  let text = 'Price update failed — using cache';
+  if (errType === 'network') text = 'Connection failed — using cache';
+  else if (errType === '429') text = 'Rate limited — using cache';
+  else if (errType === '5xx') text = 'API down — using cache';
+  setCurrentStatus(text, 'error');
+  setActivityStatus(text + '.', 'error');
+  apiWasDown = true;
   return false;
 }
 
@@ -2092,16 +2106,19 @@ function recomputeHoldingSignals() {
   saveHoldingSignals();
 }
 
+let priceFetchInFlight = false;
+
 function scheduleApiRecheck() {
   if (recheckTimer) clearTimeout(recheckTimer);
   recheckTimer = setTimeout(async () => {
+    if (document.hidden) { recheckTimer = null; return; }
     setActivityStatus('Re-checking API…', 'info');
-    const reachable = await checkApiStatus();
+    const ids = saved.map(s => s.id).filter(Boolean);
+    const reachable = ids.length ? await fetchPrices(ids) : await checkApiStatus();
     if (reachable) {
       recheckTimer = null;
+      if (refreshPriceTimer) clearInterval(refreshPriceTimer);
       refreshPriceTimer = setInterval(schedulePriceFetch, PRICE_REFRESH_INTERVAL);
-      const ids = saved.map(s => s.id).filter(Boolean);
-      await fetchPrices(ids);
       recomputeHoldingSignals();
       applyCurrentSort();
       fetchTaForPortfolio([...new Set([...ids, 'bitcoin'])]);
@@ -2112,22 +2129,40 @@ function scheduleApiRecheck() {
 }
 
 async function schedulePriceFetch() {
-  const isApiReachable = await checkApiStatus();
+  if (document.hidden || priceFetchInFlight) return;
   const ids = saved.map(s => s.id).filter(Boolean);
-  if (isApiReachable) {
-    await fetchPrices(ids);
-    recomputeHoldingSignals();
-    updatePricesInTable();
-    const taIds = [...new Set([...ids, 'bitcoin'])];
-    fetchTaForPortfolio(taIds);
-    refreshDayCandles(ids);
-  } else {
-    updatePricesInTable();
-    if (refreshPriceTimer) { clearInterval(refreshPriceTimer); refreshPriceTimer = null; }
-    scheduleApiRecheck();
+  if (!ids.length) {
+    await checkApiStatus();
+    return;
+  }
+  priceFetchInFlight = true;
+  setCurrentStatus('Refreshing…', 'info');
+  try {
+    const isApiReachable = await fetchPrices(ids);
+    if (isApiReachable) {
+      recomputeHoldingSignals();
+      updatePricesInTable();
+      fetchTaForPortfolio([...new Set([...ids, 'bitcoin'])]);
+    } else {
+      updatePricesInTable();
+      if (refreshPriceTimer) { clearInterval(refreshPriceTimer); refreshPriceTimer = null; }
+      scheduleApiRecheck();
+    }
+  } finally {
+    priceFetchInFlight = false;
   }
 }
 
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) return;
+  const age = Date.now() - lastPriceTime;
+  if (apiWasDown || !refreshPriceTimer || age >= PRICE_REFRESH_INTERVAL) {
+    if (recheckTimer) { clearTimeout(recheckTimer); recheckTimer = null; }
+    if (refreshPriceTimer) clearInterval(refreshPriceTimer);
+    refreshPriceTimer = setInterval(schedulePriceFetch, PRICE_REFRESH_INTERVAL);
+    schedulePriceFetch();
+  }
+});
 const SIGNAL_LABELS_SHORT = {
   'ACCUMULATE': 'ADD', 'HOLD': 'HOLD', 'WAIT': 'WAIT', 'TRIM': 'TRIM', 'SWING TRIM': 'SWING',
   'AT RISK': 'RISK', 'EXIT': 'EXIT', 'NA': 'N/A'
@@ -2394,7 +2429,7 @@ document.addEventListener('click', (e) => {
 // ===== Back-button integration ======================================================================
 // Each overlay owns one history entry. Back closes only the topmost overlay in the stack.
 const NAV_HISTORY_KEY = '__portfolioTrackerOverlayStack';
-const navHist = { stack: [], handlingPop: false, pendingBack: false, pendingDesired: null };
+const navHist = { stack: [], handlingPop: false, pendingBack: false, backTimer: null, syncQueued: false };
 
 function currentOverlayStack() {
   const stack = [];
@@ -2418,16 +2453,19 @@ function navHistoryState(stack) {
   return next;
 }
 
-function syncNavHistory() {
-  if (navHist.handlingPop) return;
+function clearPendingBack() {
+  navHist.pendingBack = false;
+  if (navHist.backTimer) { clearTimeout(navHist.backTimer); navHist.backTimer = null; }
+}
+
+function flushNavHistory() {
+  navHist.syncQueued = false;
+  if (navHist.handlingPop || navHist.pendingBack) return;
+
   const desired = currentOverlayStack();
-
-  if (navHist.pendingBack) {
-    navHist.pendingDesired = desired;
-    return;
-  }
-
   const current = navHist.stack;
+  if (desired.length === current.length && desired.every((layer, index) => layer === current[index])) return;
+
   const isPrefix = desired.length <= current.length && desired.every((layer, index) => layer === current[index]);
 
   try {
@@ -2438,19 +2476,35 @@ function syncNavHistory() {
         navHist.stack = nextStack;
       }
     } else if (isPrefix && desired.length < current.length) {
+      const delta = desired.length - current.length; // batches multi-layer closes (e.g. removeCoin -> -2)
       navHist.pendingBack = true;
-      navHist.pendingDesired = desired;
-      history.back();
-    } else if (desired.length === current.length && desired.every((layer, index) => layer === current[index])) {
-      return;
+      if (navHist.backTimer) clearTimeout(navHist.backTimer);
+      navHist.backTimer = setTimeout(() => {
+        if (!navHist.pendingBack) return;
+        clearPendingBack();
+        navHist.stack = currentOverlayStack();
+        try { history.replaceState(navHistoryState(navHist.stack), ''); } catch (e) {}
+      }, 450);
+      history.go(delta);
     } else {
       history.replaceState(navHistoryState(desired), '');
       navHist.stack = desired;
     }
   } catch (e) {
+    clearPendingBack();
     navHist.stack = desired;
-    navHist.pendingBack = false;
-    navHist.pendingDesired = null;
+  }
+}
+
+function syncNavHistory({ immediate = false } = {}) {
+  if (navHist.handlingPop) return;
+  if (immediate) {
+    flushNavHistory();
+    return;
+  }
+  if (!navHist.syncQueued) {
+    navHist.syncQueued = true;
+    queueMicrotask(flushNavHistory);
   }
 }
 
@@ -2462,12 +2516,12 @@ window.addEventListener('popstate', (event) => {
   const targetIsPrefix = stateStack.length <= currentlyOpen.length
     && stateStack.every((layer, index) => layer === currentlyOpen[index]);
 
-  navHist.pendingBack = false;
-  navHist.pendingDesired = null;
+  clearPendingBack();
 
   if (!targetIsPrefix) {
-    navHist.stack = currentlyOpen;
-    try { history.replaceState(navHistoryState(currentlyOpen), ''); } catch (e) {}
+    // Landed on an overlay entry whose overlay(s) already closed — keep backing out cleanly.
+    navHist.stack = stateStack;
+    syncNavHistory({ immediate: true });
     return;
   }
 
@@ -2482,10 +2536,9 @@ window.addEventListener('popstate', (event) => {
 
   const actualStack = currentOverlayStack();
   if (actualStack.length !== stateStack.length || actualStack.some((layer, index) => layer !== stateStack[index])) {
-    syncNavHistory();
+    syncNavHistory({ immediate: true });
   }
 });
-
 try {
   const currentState = history.state;
   if (hasLegacyOverlayMarker(currentState) || (currentState && typeof currentState === 'object' && Object.prototype.hasOwnProperty.call(currentState, NAV_HISTORY_KEY))) {
@@ -3076,15 +3129,19 @@ const lastLog = dcaLogCache[item.id] ?? null;
   const chk = (l, v) => `${l} <b class="${v == null ? 'muted' : v ? 'buy' : 'sell'}">${v == null ? '—' : v ? '✓' : '✕'}</b>`;
   const others = `Other checks: ${chk('Safe', volOk && microOk)} · ${chk('Target hit', tgt == null ? null : nearTarget)} · ${chk('Add', ta.signal === 'ACCUMULATE')} · ${chk('Swing trim', ta.signal === 'SWING TRIM')}`;
 
-  // ---- price-position sliders ----
+// ---- price-position sliders ----
+  ensureDayCandle(item.id);
   const dayC = getDayCandle(item.id);
   const rawCandle = dayCandleCache[item.id];
+  const candlePending = dayCandlePendingIds.has(item.id);
   const nowMs = Date.now(), dayStart = utcMidnightOf(nowMs);
-  const candleMsg = (rawCandle && rawCandle.invalid && rawCandle.dayKey === utcDayKey(nowMs))
-    ? 'Today\'s candle rejected — CoinGecko\'s first candle doesn\'t start at 00:00 UTC'
-    : (nowMs - dayStart < 60 * 60000)
-      ? `New UTC day — first candle closes ${new Date(dayStart + CANDLE_MS).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} local`
-      : 'Today\'s candle unavailable — waiting on CoinGecko OHLC';
+  const candleMsg = candlePending
+    ? 'Loading today\'s candle…'
+    : (rawCandle && rawCandle.invalid && rawCandle.dayKey === utcDayKey(nowMs))
+      ? 'Today\'s candle rejected — CoinGecko\'s first candle doesn\'t start at 00:00 UTC'
+      : (nowMs - dayStart < 60 * 60000)
+        ? `New UTC day — first candle closes ${new Date(dayStart + CANDLE_MS).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} local`
+        : 'Today\'s candle unavailable — waiting on CoinGecko OHLC';
   const hasRange = dayC && dayC.low != null && dayC.high != null;
   // The live price is a real observed price, so it can only widen the candle range (a wick since the
   // last OHLC fetch is the one thing this can't see — hence the 'as of' time).
@@ -3237,7 +3294,7 @@ async function addCoinToPortfolio(chosenId, rawSymbol, chosenName) {
   save();
   buildPortfolioMap();
 
-  await checkApiStatus();
+  
   applyCurrentSort();
   await fetchPrices([newCoin.id]);
   recomputeHoldingSignals();
@@ -3464,19 +3521,19 @@ buildPortfolioMap();
 saved.sort(compareBySortColumn);
 renderTable();
 
-const isApiReachable = await checkApiStatus();
 const startIds = saved.map(s => s.id).filter(Boolean);
 const startTaIds = [...new Set([...startIds, 'bitcoin'])];
 
+setCurrentStatus('Refreshing…', 'info');
+const isApiReachable = startIds.length ? await fetchPrices(startIds) : await checkApiStatus();
+
 if (isApiReachable) {
   refreshPriceTimer = setInterval(schedulePriceFetch, PRICE_REFRESH_INTERVAL);
-  await fetchPrices(startIds);
   initialPriceFetchComplete = true;
   recomputeHoldingSignals();
   applyCurrentSort();
   updateScheduledStatus();
   fetchTaForPortfolio(startTaIds);
-  refreshDayCandles(startIds);
 } else {
   initialPriceFetchComplete = true;
   renderTable();
