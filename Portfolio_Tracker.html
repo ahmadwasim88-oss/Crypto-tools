@@ -1988,7 +1988,7 @@
    const API_KEY = 'CG-G1MtEv33nwCgRyvF4YNsKyDs';
    const API_BASE = 'https://api.coingecko.com/api/v3';
    
-   const PRICE_REFRESH_INTERVAL = 2 * 60000;
+   const PRICE_REFRESH_INTERVAL = 60000;
    const API_RECHECK_INTERVAL = 0.5 * 60000;
    const ACTIVITY_TIMEOUT = 6000;
    const ACTIVITY_TIMEOUT_ALERT = 12000;
@@ -2125,12 +2125,25 @@
    const DCA_NEAR_LOW_FLOOR_PCT = 1.5;
    const DCA_NEAR_LOW_CEIL_PCT = 8;
    
-   const TA_ALIGN_BUFFER_MS = 15 * 60000;
+ const TA_ALIGN_BUFFER_MS = 15 * 60000;
    const TA_HISTORY_DAYS = 365;
-   const TA_FETCH_DELAY_MS = 1500;
    const TA_MAX_DATA_AGE_MS = 3 * 24 * 3600000; // daily history must end within 3 days of now
-   const TA_RETRY_COOLDOWN_MS = 30 * 60000; // wait 30m before retrying a failed/stale TA feed
+   const TA_RETRY_COOLDOWN_MS = 5 * 60000; // wait 5m before retrying a failed/stale TA feed
    const taLastAttempt = {};
+
+   const HEAVY_CALL_GAP_MS = 2200; // caps market_chart + ohlc calls under ~27/min across all features
+   let heavyCallTail = Promise.resolve();
+   let lastHeavyCallAt = 0;
+
+   function paceHeavyCall() {
+    const run = heavyCallTail.then(async () => {
+     const wait = Math.max(0, HEAVY_CALL_GAP_MS - (Date.now() - lastHeavyCallAt));
+     if (wait > 0) await new Promise(r => setTimeout(r, wait));
+     lastHeavyCallAt = Date.now();
+    });
+    heavyCallTail = run.catch(() => {});
+    return run;
+   }
    
    const RSI_PERIOD = 14;
    const RSI_OVERSOLD = 30; // fallback only, used when a coin lacks enough RSI history for its own threshold
@@ -2275,8 +2288,10 @@
     statusLine.className = 'status-line';
    }
    
+let taLastSummaryNote = '';
+
    function updateScheduledStatus() {
-    ambientStatusText = `Prices ${formatTime(lastPriceTime)} · TA ${lastTaTime ? formatDateTime(lastTaTime) : 'loading…'}`;
+    ambientStatusText = `Prices ${formatTime(lastPriceTime)} · TA ${lastTaTime ? formatDateTime(lastTaTime) : 'loading…'}${taLastSummaryNote}`;
     if (!statusEventActive) renderAmbientStatus();
    }
    
@@ -2471,7 +2486,8 @@
    // prices, so they can differ slightly from a single exchange's candle.
    const CANDLE_MS = 30 * 60000;
    const DAY_CANDLE_REFRESH_MS = 15 * 60000; // CoinGecko caches OHLC for 15 minutes
-   const DAY_CANDLE_RETRY_MS = 5 * 60000; // back-off after a failed/rejected fetch
+   const DAY_CANDLE_RETRY_MS = 5 * 60000; // back-off after an invalid/unaligned candle
+   const DAY_CANDLE_ERR_RETRY_MS = 60000; // shorter back-off after a transient network/429 failure
    const dayCandleLastAttempt = {};
    const dayCandlePendingIds = new Set();
    
@@ -2511,7 +2527,7 @@
     if (!id || dayCandlePendingIds.has(id) || document.hidden) return;
     const now = Date.now();
     const lastTry = dayCandleLastAttempt[id] || 0;
-    if (now - lastTry < DAY_CANDLE_RETRY_MS) return;
+    if (now - lastTry < DAY_CANDLE_ERR_RETRY_MS) return;
     const c = dayCandleCache[id];
     const today = utcDayKey(now);
     if (c && c.dayKey === today && (now - c.fetchedAt) < (c.invalid ? DAY_CANDLE_RETRY_MS : DAY_CANDLE_REFRESH_MS)) return;
@@ -2557,10 +2573,10 @@
     const t = getTodayChangePct(id);
     return t != null ? { pct: t, rolling: false } : null;
    }
-   
-   async function fetchTaHistory(id) {
+async function fetchTaHistory(id) {
     fetchTaHistory.lastErr = null;
     try {
+     await paceHeavyCall();
      const controller = new AbortController();
      const timeoutId = setTimeout(() => controller.abort(), 10000);
      let res;
@@ -2588,9 +2604,10 @@
    //    to the 4-day bucket, and the oldest candle can straddle the window edge.
    //  * market_chart for 90d (no interval => CoinGecko auto-granularity returns HOURLY points for
    //    windows of 2-90 days): exact window edge and hour-level dates, price within the sub-hour wick.
-   async function fetchJsonTimeout(url) {
+async function fetchJsonTimeout(url) {
     fetchJsonTimeout.lastErr = null;
     try {
+     await paceHeavyCall();
      const controller = new AbortController();
      const timeoutId = setTimeout(() => controller.abort(), 10000);
      let res;
@@ -2611,8 +2628,7 @@
      now = Date.now();
     const cutoff90 = now - DCA_DIP_WINDOW_DAYS * DAY,
      cutoffYear = now - YEAR_HIGH_DAYS * DAY;
-    const ohlc = await fetchJsonTimeout(`${API_BASE}/coins/${id}/ohlc?vs_currency=inr&days=${YEAR_HIGH_DAYS}&x_cg_demo_api_key=${API_KEY}`);
-    await new Promise(r => setTimeout(r, 500));
+const ohlc = await fetchJsonTimeout(`${API_BASE}/coins/${id}/ohlc?vs_currency=inr&days=${YEAR_HIGH_DAYS}&x_cg_demo_api_key=${API_KEY}`);
     const hourly = await fetchJsonTimeout(`${API_BASE}/coins/${id}/market_chart?vs_currency=inr&days=${DCA_DIP_WINDOW_DAYS}&x_cg_demo_api_key=${API_KEY}`);
     const ok = v => v != null && !isNaN(v);
     const slots = { d90High: null, d90Low: null, yHigh: null, yLow: null };
@@ -2772,17 +2788,21 @@
      setActivityStatus(`Re-applied updated signal logic to ${recomputed} coin(s).`, 'ok');
     }
     
-    const stale = ids.filter(id => {
+const stale = ids.filter(id => {
      const cached = taCache[id];
      if (force) return true;
      if (Date.now() - (taLastAttempt[id] || 0) < TA_RETRY_COOLDOWN_MS) return false;
      if (!cached) return true;
      if (cached.fetchVersion !== TA_FETCH_VERSION) return true;
+     if (cached.wickIncomplete) return true;
      if (cached.closesEndTs && Date.now() - cached.closesEndTs > TA_MAX_DATA_AGE_MS && Date.now() - cached.timestamp > 6 * 3600000) return true;
      if (cached.version !== TA_LOGIC_VERSION && !hasEnoughHistory(cached)) return true;
      return taBoundaryPassedSince(cached.timestamp);
     });
     if (!stale.length || taFetchInFlight) return;
+    const priority = id => id === 'bitcoin' ? 0 : (id === expandedRowId ? 1 : 2);
+    stale.sort((a, b) => priority(a) - priority(b));
+
     taFetchInFlight = true;
     taRefreshBtn?.classList.add('spinning');
     try {
@@ -2795,11 +2815,15 @@
       const id = stale[i];
       taLastAttempt[id] = Date.now();
       setActivityStatus(`Updating TA (${i + 1}/${stale.length}: ${id})…`, 'info');
-      const closes = await fetchTaHistory(id);
+      let closes = await fetchTaHistory(id);
+      if (!closes && fetchTaHistory.lastErr === 'HTTP_ERROR:429') {
+       setActivityStatus(`Rate limited on ${id} — pausing 15s…`, 'warn');
+       await new Promise(r => setTimeout(r, 15000));
+       closes = await fetchTaHistory(id);
+      }
       if (!closes) {
        failed++;
        lastErr = fetchTaHistory.lastErr || lastErr;
-       await new Promise(r => setTimeout(r, TA_FETCH_DELAY_MS));
        continue;
       }
       // Freshness guard: a daily series that ends days ago makes every window, RSI and EMA read from
@@ -2807,15 +2831,21 @@
       if (closes.lastTs == null || Date.now() - closes.lastTs > TA_MAX_DATA_AGE_MS) {
        staleFeeds++;
        setActivityStatus(`Daily history for ${id} ends ${closes.lastTs ? new Date(closes.lastTs).toISOString().slice(0, 10) : 'at an unknown date'} — too old, discarded.`, 'warn');
-       await new Promise(r => setTimeout(r, TA_FETCH_DELAY_MS));
        continue;
       }
       const ta = computeTaFromCloses(closes);
       if (ta && auditTa(ta)) {
        ta.closesEndTs = closes.lastTs;
-       await new Promise(r => setTimeout(r, 500));
-       const ext = await fetchRangeExtremes(id);
+       let ext = await fetchRangeExtremes(id);
+       if (!ext && fetchJsonTimeout.lastErr === 'HTTP_ERROR:429') {
+        setActivityStatus(`Rate limited during wick check (${id}) — pausing 15s…`, 'warn');
+        await new Promise(r => setTimeout(r, 15000));
+        ext = await fetchRangeExtremes(id);
+       }
+       const wickErr = !ext && fetchJsonTimeout.lastErr != null;
        applyRangeExtremes(ta, closes, ext);
+       if (wickErr) ta.wickIncomplete = true;
+       else delete ta.wickIncomplete;
        taCache[id] = ta;
        updated++;
        saveTaData();
@@ -2828,8 +2858,10 @@
        auditFailures++;
        setActivityStatus(`TA ${ta ? 'audit failed' : 'history too short'} for ${id} — keeping previous values.`, 'warn');
       }
-      await new Promise(r => setTimeout(r, TA_FETCH_DELAY_MS));
      }
+     const incomplete = failed + auditFailures + staleFeeds;
+     taLastSummaryNote = incomplete ? ` (${updated}/${stale.length} ok)` : '';
+     updateScheduledStatus();
      setActivityStatus(`TA history updated (${updated}/${stale.length}).${failed ? ` ${failed} failed${lastErr ? ` (${lastErr})` : ''}.` : ''}${auditFailures ? ` ${auditFailures} discarded on audit failure.` : ''}${staleFeeds ? ` ${staleFeeds} discarded as stale (history ended >3d ago).` : ''}`, updated > 0 && !failed ? 'ok' : 'warn');
     } catch (err) {
      setActivityStatus('TA refresh hit an unexpected error — will retry on the next cycle.', 'warn');
@@ -3507,12 +3539,12 @@
    }
    
    async function fetchPricesChunk(validIds, attempt = 0) {
-    const maxRetries = 2;
+    const maxRetries = 1;
     let lastErr = '';
     while (attempt <= maxRetries) {
      try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
       let res;
       try { res = await fetch(`${API_BASE}/coins/markets?vs_currency=inr&ids=${validIds.join(',')}&order=market_cap_desc&per_page=250&page=1&sparkline=false&price_change_percentage=7d,30d&x_cg_demo_api_key=${API_KEY}`, { signal: controller.signal }); }
       finally { clearTimeout(timeoutId); }
@@ -3540,7 +3572,7 @@
       lastErr = msg.includes('429') ? '429' : (/5\d{2}/.test(msg) ? '5xx' : (isNet ? 'network' : 'error'));
       if (lastErr === '429') break; // don't burn more quota retrying into a rate limit
       attempt++;
-      if (attempt <= maxRetries) await new Promise(r => setTimeout(r, 3000 * attempt));
+      if (attempt <= maxRetries) await new Promise(r => setTimeout(r, 1500));
      }
     }
     return { updated: 0, total: validIds.length, err: lastErr };
@@ -3643,10 +3675,10 @@
     }
    }
    
-   document.addEventListener('visibilitychange', () => {
+function refreshOnResume() {
     if (document.hidden) return;
     const age = Date.now() - lastPriceTime;
-    if (apiWasDown || !refreshPriceTimer || age >= PRICE_REFRESH_INTERVAL) {
+    if (apiWasDown || !refreshPriceTimer || age >= 30000) {
      if (recheckTimer) {
       clearTimeout(recheckTimer);
       recheckTimer = null;
@@ -3655,7 +3687,10 @@
      refreshPriceTimer = setInterval(schedulePriceFetch, PRICE_REFRESH_INTERVAL);
      schedulePriceFetch();
     }
-   });
+   }
+   document.addEventListener('visibilitychange', refreshOnResume);
+   window.addEventListener('pageshow', refreshOnResume);
+   window.addEventListener('focus', refreshOnResume);   
    const SIGNAL_LABELS_SHORT = {
     'ACCUMULATE': 'ADD',
     'HOLD': 'HOLD',
@@ -4578,16 +4613,24 @@
      }
     });
     if (!document.querySelector('.target-input') && sortOrderIsStale()) applyCurrentSort();
-    else if (expandedRowId) {
+else if (expandedRowId) {
      const activeChart = document.getElementById(`chart-container-${expandedRowId}`);
      const chartIsOpen = activeChart && activeChart.dataset.loaded === 'true' && activeChart.style.display === 'block';
+     const item = portfolioMap[expandedRowId];
      if (!chartIsOpen) {
       const tr = tableBody.querySelector(`tr[data-id="${expandedRowId}"]`);
-      const item = portfolioMap[expandedRowId];
       if (tr && item) handleRowExpansion(tr, item, true);
+     } else if (item && coinPopupOpen) {
+      cpPx.innerHTML = priceCellHTML(item.id, pricesCache[item.id] ?? null);
+      const tNum = (item.target != null && item.target !== '' && !isNaN(Number(item.target))) ? Number(item.target) : null;
+      if (tNum == null) {
+       cpTarget.innerHTML = 'Target not set';
+      } else {
+       const toTgt = pctToTarget(pricesCache[item.id] ?? null, tNum);
+       cpTarget.innerHTML = `Target <b>${formatINR(tNum, Number.isInteger(tNum) ? 0 : pricePrecisionFor(tNum))}</b> <span class="${toTgt == null ? '' : toTgt >= 0 ? 'up' : 'dn'}">${formatPctShort(toTgt)}</span>`;
+      }
      }
-    }
-   }
+    }   }
    
    function daysSince(dateStr) {
     if (!dateStr) return null;
@@ -5005,8 +5048,7 @@
         const item = { id: coin.id, symbol: (coin.symbol || '').toUpperCase(), name: coin.name, target: null };
         let sig = classifyHolding(md, item, ta, macroTa);
         
-        if (sig.signal === 'ACCUMULATE') {
-         await new Promise(r => setTimeout(r, 1500));
+if (sig.signal === 'ACCUMULATE') {
          let ext = await fetchRangeExtremes(coin.id);
          if (!ext && fetchJsonTimeout.lastErr === 'HTTP_ERROR:429') {
           discoverResults.innerHTML = `<div class="discover-empty">Rate limited during wick check — pausing 15s before retrying ${(coin.symbol || coin.id).toUpperCase()}…</div>`;
@@ -5015,7 +5057,6 @@
          }
          applyRangeExtremes(ta, closes, ext);
          sig = classifyHolding(md, item, ta, macroTa);
-         await new Promise(r => setTimeout(r, 2500));
         }
         
         if (sig.signal === 'ACCUMULATE') {
@@ -5030,7 +5071,6 @@
         }
        }
       }
-      await new Promise(r => setTimeout(r, Math.max(TA_FETCH_DELAY_MS, 2100)));
      }
      discoverCheckedCount += batch.length;
      renderDiscoverResults();
