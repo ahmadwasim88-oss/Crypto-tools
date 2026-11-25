@@ -3,7 +3,7 @@ name: Update USDT Rate
 on:
   schedule:
     # off-peak minutes: GitHub delays or drops runs scheduled at :00 and :30
-    - cron: '7,37 * * * *'
+    - cron: '19,49 * * * *'
   workflow_dispatch:
 
 permissions:
