@@ -3563,7 +3563,7 @@
    // ATH when it is already known) down to a short list; only that short list gets the per-coin daily-history
    // and ATH fetch (stage 2, same fetchTaHistory used for the portfolio), capped at DISCOVER_MAX_TA_FETCHES
    // so an on-demand scan can't trigger 100+ sequential history calls.
-   const DISCOVER_TOP_N = 100;
+   const DISCOVER_TOP_N = 200;
    // Pegged coins never have a meaningful ATH discount or oversold dip, so Discover skips them: a known list of
    // stablecoins and fiat-pegged tokens, plus any pair trading at about 1 USDT with a tiny 24h range.
    const STABLECOIN_BASES = new Set(['USDC', 'FDUSD', 'TUSD', 'USDE', 'USDP', 'DAI', 'BUSD', 'USDS', 'USD1', 'PYUSD', 'RLUSD', 'XUSD', 'USDD', 'FRAX', 'EURI', 'EUR', 'AEUR', 'GBP', 'TRY', 'BRL', 'JPY', 'AUD', 'ARS', 'MXN', 'PLN', 'RON', 'UAH', 'ZAR', 'CZK', 'COP']);
