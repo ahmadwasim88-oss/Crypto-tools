@@ -2789,8 +2789,8 @@
    const FX_CACHE_KEY = 'shortfall_fx_cache';
    const FX_LIVE_TTL_MS = 30 * 60000;
    // GitHub Pages JSON written by the usdt-proxy repo's workflow. If this is emptied, a URL saved earlier in this browser is used.
-   //const USDT_INR_JSON_URL = 'https://ahmadwasim88-oss.github.io/usdt-proxy/index.json';
-   const USDT_INR_JSON_URL = 'https://ahmadwasim88-oss.github.io/Crypto-tools/index.json';
+   //const USDT_INR_JSON_URL = 'https://ahmadwasim88-oss.github.io/usdt-proxy/usdt-inr.json';
+   const USDT_INR_JSON_URL = 'https://ahmadwasim88-oss.github.io/Crypto-tools/usdt-inr.json';
    const FX_AUTO_FRESH_MS = 45 * 60000; // the proxy refreshes every ~30 min, so up to 45 min old = fresh
    const FX_AUTO_STALE_MS = 2 * 3600000; // 45 min – 2 h = delayed; beyond = stale
    let fxCacheMem = null;
@@ -2995,7 +2995,7 @@
 
    function getUsdtJsonUrl() {
     let u = (USDT_INR_JSON_URL || getFxCache().customProxyUrl || '').trim();
-    if (u && !u.endsWith('.json')) u = u.replace(/\/+$/, '') + '/index.json';
+    if (u && !u.endsWith('.json')) u = u.replace(/\/+$/, '') + '/usdt-inr.json';
     return u;
    }
 
