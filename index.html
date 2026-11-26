@@ -899,9 +899,9 @@
     }
 
     async function loadInr() {
-      const g = await getJSON("https://api.coingecko.com/api/v3/simple/price?ids=tether&vs_currencies=inr");
-      $("inrVal").textContent = "₹" + g.tether.inr.toFixed(2);
-      $("inrSub").textContent = "per 1 USDT";
+      const g = await getJSON("https://usdt-inr-proxy.waseem-ah-zaki.workers.dev/usdt-inr.json");
+      $("inrVal").textContent = "₹" + Number(g.usdtInr).toFixed(2);
+      $("inrSub").textContent = g.source || "per 1 USDT";
     }
 
     async function loadFunding() {
