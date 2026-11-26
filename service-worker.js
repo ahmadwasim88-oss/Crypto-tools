@@ -1,14 +1,13 @@
-const CACHE_NAME = "crypto-tools-waz-v2";
+const CACHE_NAME = "crypto-tools-waz-v3";
 
 const APP_FILES = [
   "./",
   "./index.html",
   "./manifest.json",
-  "./Portfolio_Tracker.html",
-  "./Scanner.html",
-  "./CrytoCal.html",
-  "./Percentage%20Calculators.html",
-  "./ohlcv.html",
+  "./tools/Portfolio_Tracker.html",
+  "./tools/CrytoCal.html",
+  "./tools/PercentageCalculators.html",
+  "./tools/ohlcv.html",
   "./icons/icon-192.png",
   "./icons/icon-512.png"
 ];
