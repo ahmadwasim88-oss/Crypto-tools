@@ -1,6 +1,0 @@
-name = "coindcx-rate-updater"
-main = "src/index.js"
-compatibility_date = "2026-11-26"
-
-[triggers]
-crons = ["19,49 * * * *"]
