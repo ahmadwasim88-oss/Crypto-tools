@@ -1,0 +1,50 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CoinSwitch Popup Test</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,sans-serif;background:#111827;color:white}
+header{padding:16px;font-size:18px;font-weight:700}
+button{border:0;border-radius:10px;padding:13px 18px;font-size:15px;font-weight:600;cursor:pointer}
+#open{margin:12px;background:#2563eb;color:white}
+#overlay{position:fixed;inset:0;background:#000b;display:none;z-index:5}
+#popup{position:absolute;inset:3% 2%;background:#fff;border-radius:14px;overflow:hidden;display:flex;flex-direction:column}
+#bar{height:52px;flex-shrink:0;background:#1f2937;display:flex;align-items:center;justify-content:space-between;padding:0 12px}
+#bar button{padding:8px 13px}
+iframe{border:0;width:100%;flex:1;background:white}
+#status{padding:12px;color:#cbd5e1;font-size:14px}
+</style>
+</head>
+<body>
+<header>CoinSwitch Popup Test</header>
+<button id="open">Open CoinSwitch</button>
+<div id="status">Tap the button to test the website inside a popup.</div>
+<div id="overlay">
+<div id="popup">
+<div id="bar">
+<strong>CoinSwitch – TFUEL/INR</strong>
+<button id="close">Close ✕</button>
+</div>
+<iframe id="site" src="https://coinswitch.co/pro/tfuel-inr/csx"></iframe>
+</div>
+</div>
+<script>
+const overlay=document.getElementById("overlay");
+const openButton=document.getElementById("open");
+const closeButton=document.getElementById("close");
+const status=document.getElementById("status");
+openButton.onclick=()=>{
+overlay.style.display="block";
+status.textContent="Popup opened. Check whether CoinSwitch loads.";
+};
+closeButton.onclick=()=>overlay.style.display="none";
+overlay.onclick=e=>{
+if(e.target===overlay)overlay.style.display="none";
+};
+</script>
+</body>
+</html>
