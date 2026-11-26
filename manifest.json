@@ -5,10 +5,10 @@
   "description": "Crypto portfolio tracker, scanner, calculators and market tools.",
   "start_url": "./",
   "scope": "./",
-  "display": "fullscreen",
+  "display": "standalone",
   "orientation": "portrait",
   "background_color": "#ffffff",
-  "theme_color": "#1f5be0",
+  "theme_color": "#121212",
   "icons": [
     {
       "src": "./icons/icon-192.png",
