@@ -1,0 +1,12 @@
+{
+  "id": "/crypto-tools-waz",
+  "name": "Crypto Tools _WAZ",
+  "short_name": "Crypto WAZ",
+  "description": "Crypto portfolio tracker, scanner, calculators and market tools.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#1f5be0"
+}
