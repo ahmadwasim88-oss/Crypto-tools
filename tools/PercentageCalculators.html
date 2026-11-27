@@ -258,7 +258,7 @@ function calculate() {
     }
   } else if (currentTool === 2) {
     const p = n('d'), f = n('e');
-    if (!isNaN(p) && !isNaN(f)) {
+    if (!isNaN(p) && !isNaN(f) && p !== -100) { // -100% would divide by zero: no original value exists
       const orig = (f / (1 + p/100));
       res = orig.toLocaleString(undefined, {maximumFractionDigits:2}); label = "ORIGINAL VALUE";
       proof = `${orig.toFixed(2)} ${p >= 0 ? '+' : '-'} ${Math.abs(p)}% = ${highlight(f)}`;

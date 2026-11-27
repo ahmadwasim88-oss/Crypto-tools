@@ -3040,7 +3040,7 @@
      ({ fresh: ['Fresh', 'var(--buy)'], delayed: ['Delayed', 'var(--trim)'], stale: ['Stale', 'var(--sell)'], never: ['Not synced', 'var(--trim)'], off: ['Bank forex', 'var(--muted)'] })[st.state];
     const row = (k, v, cls = '') => `<div class="fx-row"><span class="fx-k">${k}</span><span class="fx-v ${cls}">${v}</span></div>`;
     const rows = [row('Mode', c.manual ? 'Manual rate — auto-sync paused' : url ? 'Auto-sync, about every 5 min' : 'Bank forex only (no source set)')];
-    if (url) rows.push(row('Source', `${escHtml(c.autoSource || '—')} <span class="fx-sub">· ${escHtml(host)}</span>`));
+    if (url) rows.push(row('Source', `${escHtml(c.autoSource || '—')} <span class="fx-sub">· ${/^https?:\/\//i.test(url) ? `<a href="${escHtml(url)}" target="_blank" rel="noopener noreferrer" style="color:var(--accent);text-decoration:underline">${escHtml(host)}</a>` : escHtml(host)}</span>`));
     if (url && c.lastAutoAt) {
      if (c.lastAutoDataTs) rows.push(row('Data updated', when(c.lastAutoDataTs)));
      rows.push(row('Last synced', when(c.lastAutoAt)));
@@ -3588,6 +3588,17 @@
    };
    // Quota / private-mode failures must not abort the calling flow mid-way.
    const lsSet = (key, val) => { try { localStorage.setItem(key, val); } catch (e) {} };
+   // The user's own data (portfolio, DCA log) must never be lost silently when storage is full: free the caches that
+   // are re-fetched automatically (prices, TA, market data...), retry once, and otherwise tell the user.
+   const lsSetCritical = (key, val) => {
+    try { localStorage.setItem(key, val); return true; } catch (e) {}
+    for (const k of ['binance_day_candle', 'binance_market_data', 'binance_prices', 'binance_holding_signals', 'binance_ta_data', 'binance_coin_list']) {
+     try { localStorage.removeItem(k); } catch (e) {}
+    }
+    try { localStorage.setItem(key, val); return true; } catch (e) {}
+    try { setActivityStatus('Storage full — your latest change could not be saved. Export a backup now.', 'error'); } catch (e) {}
+    return false;
+   };
    const escHtml = (t) => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' } [c]));
    
    let saved = loadJSON('binance_portfolio', []);
@@ -3662,11 +3673,11 @@
    const formatPctShort = (val) => (val == null || isNaN(val)) ? '—' : (Math.abs(val) >= 100 ? `${val > 0 ? '+' : val < 0 ? '−' : ''}${Math.abs(val).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%` : `${val > 0 ? '+' : val < 0 ? '−' : ''}${Math.abs(val).toFixed(2)}%`);
    const formatPct = (val) => (val == null || isNaN(val)) ? 'N/A' : `${val > 0 ? '+' : ''}${val.toFixed(2)}%`;
    
-   const save = () => lsSet('binance_portfolio', JSON.stringify(saved));
+   const save = () => lsSetCritical('binance_portfolio', JSON.stringify(saved));
    const savePrices = () => lsSet('binance_prices', JSON.stringify(pricesCache));
    const saveMarketData = () => lsSet('binance_market_data', JSON.stringify(marketDataCache));
    const saveHoldingSignals = () => lsSet('binance_holding_signals', JSON.stringify(holdingSignalCache));
-   const saveDcaLog = () => lsSet('binance_dca_log', JSON.stringify(dcaLogCache));
+   const saveDcaLog = () => lsSetCritical('binance_dca_log', JSON.stringify(dcaLogCache));
    const saveDayCandles = () => lsSet('binance_day_candle', JSON.stringify(dayCandleCache));
    const saveTaData = () => { try { localStorage.setItem('binance_ta_data', JSON.stringify(taCache)); } catch (e) { setActivityStatus('Storage full — TA updated in memory only.', 'warn'); } };
    
@@ -5586,8 +5597,8 @@ const stale = ids.filter(id => {
    
    function targetCellHTML(item) {
     return item.target == null ?
-     `<span class="target-display target-unset" data-id="${item.id}">Set target</span>` :
-     `<span class="target-display" data-id="${item.id}">${item.target}</span>`;
+     `<span class="target-display target-unset" data-id="${escHtml(item.id)}">Set target</span>` :
+     `<span class="target-display" data-id="${escHtml(item.id)}">${escHtml(item.target)}</span>`;
    }
    
    function beginTargetEdit(span) {
@@ -6338,10 +6349,10 @@ const stale = ids.filter(id => {
      tr.dataset.id = item.id;
      tr.innerHTML = `
       <td data-col="coin">
-        <div class="coin-name">${item.symbol}</div>
+        <div class="coin-name">${escHtml(item.symbol)}</div>
       </td>
-      <td class="numeric price-cell" data-id="${item.id}">${priceCellHTML(item.id, cur)}</td>
-      <td class="numeric target-cell" data-id="${item.id}">${targetCellHTML(item)}</td>
+      <td class="numeric price-cell" data-id="${escHtml(item.id)}">${priceCellHTML(item.id, cur)}</td>
+      <td class="numeric target-cell" data-id="${escHtml(item.id)}">${targetCellHTML(item)}</td>
       <td class="numeric gain-cell ${gain == null ? 'gain-na' : gain >= 0 ? 'gain-pos' : 'gain-neg'}">${formatPctShort(gain)}</td>
       <td class="center signal-cell">${signalHtml}</td>
     `;
@@ -6431,12 +6442,12 @@ else if (expandedRowId) {
     
     const ta = holdingSignalCache[item.id];
     
-    const removeBtnHtml = `<button type="button" class="detail-remove-btn" data-id="${item.id}" data-symbol="${item.symbol}">Remove ${item.symbol} from portfolio</button>`;
+    const removeBtnHtml = `<button type="button" class="detail-remove-btn" data-id="${escHtml(item.id)}" data-symbol="${escHtml(item.symbol)}">Remove ${escHtml(item.symbol)} from portfolio</button>`;
     const chartHtml = `<div class="chart-toggle-row">
-      <button type="button" class="chart-toggle-btn" data-id="${item.id}" data-symbol="${item.symbol}">📈 View chart</button>
-      <a class="chart-external-link" href="https://www.tradingview.com/chart/?symbol=BINANCE%3A${item.symbol}USDT" target="_blank" rel="noopener">Open in TradingView ↗</a>
+      <button type="button" class="chart-toggle-btn" data-id="${escHtml(item.id)}" data-symbol="${escHtml(item.symbol)}">📈 View chart</button>
+      <a class="chart-external-link" href="https://www.tradingview.com/chart/?symbol=BINANCE%3A${encodeURIComponent(item.symbol)}USDT" target="_blank" rel="noopener">Open in TradingView ↗</a>
     </div>
-    <div class="chart-container" id="chart-container-${item.id}"></div>`;
+    <div class="chart-container" id="chart-container-${escHtml(item.id)}"></div>`;
     
     if (!ta || ta.signal === 'NA') {
      const pendingReason = !initialPriceFetchComplete ? 'Loading market prices…' : (ta ? ta.reason : 'No market data yet for this coin.');
@@ -6653,25 +6664,25 @@ else if (expandedRowId) {
      const vsPrevPct = (prevP > 0 && hp > 0) ? (hp - prevP) / prevP * 100 : null;
      const vsPrevTxt = vsPrevPct == null ? '' : `${vsPrevPct >= 0 ? '+' : '−'}${Math.abs(vsPrevPct).toFixed(2)}% vs prev`;
      const vsPrevCls = vsPrevPct == null ? '' : (vsPrevPct < 0 ? ' buy' : (vsPrevPct > 0 ? ' sell' : ''));
-     return `<div class="dca-hist-row"><span class="d">${fmtDcaDate(h.dateStr)}</span><b>${formatINR(hp, pricePrecisionFor(hp))}</b><span class="vp${vsPrevCls}">${vsPrevTxt}</span><div class="dca-hist-btns"><button type="button" class="dca-edit-btn" data-id="${item.id}" data-symbol="${item.symbol}" data-ts="${h.timestamp ?? ''}" data-idx="${i}" aria-label="Edit this DCA entry">✎</button><button type="button" class="dca-del-btn" data-id="${item.id}" data-symbol="${item.symbol}" data-ts="${h.timestamp ?? ''}" data-idx="${i}" aria-label="Delete this DCA entry">✕</button></div></div>`;
+     return `<div class="dca-hist-row"><span class="d">${fmtDcaDate(h.dateStr)}</span><b>${formatINR(hp, pricePrecisionFor(hp))}</b><span class="vp${vsPrevCls}">${vsPrevTxt}</span><div class="dca-hist-btns"><button type="button" class="dca-edit-btn" data-id="${escHtml(item.id)}" data-symbol="${escHtml(item.symbol)}" data-ts="${h.timestamp ?? ''}" data-idx="${i}" aria-label="Edit this DCA entry">✎</button><button type="button" class="dca-del-btn" data-id="${escHtml(item.id)}" data-symbol="${escHtml(item.symbol)}" data-ts="${h.timestamp ?? ''}" data-idx="${i}" aria-label="Delete this DCA entry">✕</button></div></div>`;
     }).join('');
     const dcaLogHtml = `
     <div class="dca-block">
       <div class="dca-head">
         <h3>My DCA</h3>
         <div class="dca-log-actions">
-          ${lastLog ? `<button type="button" class="dca-log-clear-btn" data-id="${item.id}" data-symbol="${item.symbol}">Clear</button>` : ''}
-          <button type="button" class="dca-log-btn" data-id="${item.id}" data-symbol="${item.symbol}">Log DCA</button>
+          ${lastLog ? `<button type="button" class="dca-log-clear-btn" data-id="${escHtml(item.id)}" data-symbol="${escHtml(item.symbol)}">Clear</button>` : ''}
+          <button type="button" class="dca-log-btn" data-id="${escHtml(item.id)}" data-symbol="${escHtml(item.symbol)}">Log DCA</button>
         </div>
       </div>
       ${dcaHist.length > 0 ? `<div class="dca-hist">${dcaHistRows}</div>${dcaHist.length > 5 ? `<div class="dca-hist-note">Showing newest 5 of ${dcaHist.length}. Newest-dated entry anchors the next-add check.</div>` : ''}` : '<div class="dca-empty">No DCA logged yet.</div>'}
     </div>`;
     const actsHtml = `<div class="dx-acts">
-      <button type="button" class="chart-toggle-btn" data-id="${item.id}" data-symbol="${item.symbol}">📈 View chart</button>
-      <a class="chart-external-link" href="https://www.tradingview.com/chart/?symbol=BINANCE%3A${item.symbol}USDT" target="_blank" rel="noopener">TradingView ↗</a>
-      <button type="button" class="detail-remove-btn" data-id="${item.id}" data-symbol="${item.symbol}" aria-label="Remove ${item.symbol} from portfolio">Remove</button>
+      <button type="button" class="chart-toggle-btn" data-id="${escHtml(item.id)}" data-symbol="${escHtml(item.symbol)}">📈 View chart</button>
+      <a class="chart-external-link" href="https://www.tradingview.com/chart/?symbol=BINANCE%3A${encodeURIComponent(item.symbol)}USDT" target="_blank" rel="noopener">TradingView ↗</a>
+      <button type="button" class="detail-remove-btn" data-id="${escHtml(item.id)}" data-symbol="${escHtml(item.symbol)}" aria-label="Remove ${escHtml(item.symbol)} from portfolio">Remove</button>
     </div>
-    <div class="chart-container" id="chart-container-${item.id}"></div>`;
+    <div class="chart-container" id="chart-container-${escHtml(item.id)}"></div>`;
     
     let verdictHurdleHtml = '';
     if (cmp != null && cmp > 0 && !ta.taStale) {
@@ -7032,10 +7043,12 @@ else if (expandedRowId) {
     const idMap = {};
     const seen = new Set();
     for (const item of rawList) {
-     const sym = (item.symbol || '').trim().toUpperCase();
+     if (!item || typeof item !== 'object') continue;
+     const sym = String(item.symbol || '').trim().toUpperCase();
+     if (sym && !/^[A-Z0-9]{1,30}$/.test(sym)) continue; // Binance symbols are A-Z/0-9 only; anything else is not a coin
      const newId = sym ? (sym.endsWith('USDT') ? sym : `${sym}USDT`) : item.id;
      if (item.id) idMap[item.id] = newId;
-     if (!newId || seen.has(newId)) continue;
+     if (typeof newId !== 'string' || !/^[A-Za-z0-9._-]{1,40}$/.test(newId) || seen.has(newId)) continue;
      seen.add(newId);
      const tgt = (item.target != null && item.target !== '' && !isNaN(Number(item.target))) ? Number(item.target) : null;
      imported.push({ id: newId, symbol: sym || item.symbol, name: item.name || newId, target: tgt });
@@ -7043,7 +7056,7 @@ else if (expandedRowId) {
     const importedDca = { ...dcaLogCache };
     for (const [oldId, entry] of Object.entries(rawDca)) {
      const mappedId = idMap[oldId] || (oldId.endsWith('USDT') ? oldId : null);
-     if (mappedId && entry) importedDca[mappedId] = entry;
+     if (mappedId && entry && typeof entry === 'object' && !Array.isArray(entry)) importedDca[mappedId] = entry;
     }
     saved = imported;
     dcaLogCache = importedDca;
@@ -7070,6 +7083,20 @@ else if (expandedRowId) {
     }
     setActivityStatus(`Imported ${saved.length} coin(s) & DCA logs.`, 'ok');
    }
+
+   // Another tab / the installed app shares this storage. Every save writes the whole object, so a stale tab would
+   // overwrite the other one's newer portfolio / DCA log. Adopt the other tab's data as soon as it is written.
+   window.addEventListener('storage', (e) => {
+    if (e.key !== null && e.key !== 'binance_portfolio' && e.key !== 'binance_dca_log') return; // null = storage cleared
+    saved = loadJSON('binance_portfolio', []);
+    dcaLogCache = loadJSON('binance_dca_log', {});
+    buildPortfolioMap();
+    recomputeHoldingSignals();
+    applyCurrentSort();
+    const missing = saved.map(s => s.id).filter(id => id && !pricesCache[id]);
+    if (missing.length) fetchPrices(missing);
+    setActivityStatus('Portfolio updated from another open tab.', 'info');
+   });
 
    const exportBackupBtn = document.getElementById('exportBackupBtn');
    const importBackupBtn = document.getElementById('importBackupBtn');
@@ -7139,7 +7166,10 @@ else if (expandedRowId) {
        okLabel: 'Restore',
        danger: true
       });
-      if (ok) await applyImportedData(res);
+      if (ok) {
+       try { await applyImportedData(res); }
+       catch (err) { setActivityStatus('Import failed — backup file is not in the expected format. Nothing was changed.', 'error'); }
+      }
      }
     });
    }
@@ -7381,7 +7411,7 @@ else if (expandedRowId) {
       });
      }
      suggestBox.innerHTML = results.length ?
-      results.map(coin => `<div class="suggestion-item" data-id="${coin.id}" data-symbol="${coin.symbol}" data-name="${(coin.name || '').replace(/"/g, '&quot;')}">${coin.symbol} — ${coin.name}</div>`).join('') :
+      results.map(coin => `<div class="suggestion-item" data-id="${escHtml(coin.id)}" data-symbol="${escHtml(coin.symbol)}" data-name="${escHtml(coin.name || '')}">${escHtml(coin.symbol)} — ${escHtml(coin.name || '')}</div>`).join('') :
       '<div class="suggestion-no-result">No results found</div>';
      const first = suggestBox.querySelector('.suggestion-item');
      if (first) {

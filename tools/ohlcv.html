@@ -266,8 +266,11 @@ async function fetchData() {
   const pBar = document.getElementById('progressBar');
   const pText = document.getElementById('percentText');
 
+  // Use exactly what is in the box (typing a full symbol without tapping a dropdown row must not fetch a stale one)
+  selectedSymbol = document.getElementById('symInput').value.trim().toUpperCase();
+
   // Validate
-  if (!allSymbols.includes(selectedSymbol.toUpperCase())) {
+  if (!allSymbols.includes(selectedSymbol)) {
     alert("Please select a valid Binance Futures symbol from the list.");
     return;
   }
@@ -286,6 +289,7 @@ async function fetchData() {
   
   let allKlines = [];
   let endTime = Date.now();
+  let retries = 0, failed = false;
 
   for (let i = 0; i < batches; i++) {
     const progress = Math.round(((i + 1) / batches) * 100);
@@ -296,7 +300,9 @@ async function fetchData() {
     try {
       const resp = await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${selectedSymbol}&interval=${tf}&limit=1500&endTime=${endTime}`);
       const data = await resp.json();
-      
+      if (!resp.ok || !Array.isArray(data)) throw new Error('API error ' + resp.status); // e.g. rate limit / ban returns an object, not candles
+      retries = 0;
+
       if (!data.length) break;
       
       allKlines.unshift(...data);
@@ -305,10 +311,18 @@ async function fetchData() {
       // Rate limit protection
       await new Promise(r => setTimeout(r, 100));
     } catch (e) {
+      if (++retries > 5) { failed = true; break; } // give up instead of retrying forever
       logText.textContent = "Error. Retrying...";
       i--; 
-      await new Promise(r => setTimeout(r, 1000));
+      await new Promise(r => setTimeout(r, 1000 * retries));
     }
+  }
+
+  if (!allKlines.length) {
+    logText.textContent = failed ? "Download failed — Binance did not respond. Try again later." : "No data returned for this symbol/timeframe.";
+    btn.disabled = false;
+    btn.textContent = 'START EXTRACTION';
+    return;
   }
 
   // Finalize
@@ -335,7 +349,7 @@ async function fetchData() {
   btn.disabled = false;
   btn.textContent = 'RE-EXTRACT';
   dlBtn.style.display = 'block';
-  logText.textContent = "Extraction Complete";
+  logText.textContent = failed ? "Stopped early (network/API error) — file is INCOMPLETE" : "Extraction Complete";
 }
 
 function downloadCSV() {

@@ -880,6 +880,14 @@
         }
       }
 
+      if (high >= 1e9 - 1) { // the target was never reached at any investment: don't present the search limit as an answer
+        container.style.display = 'none';
+        placeholder.style.display = 'block';
+        placeholder.innerHTML = '<div class="warning">Impossible:<br>This target price can never give the desired profit, however much you add. Raise the target or lower the desired profit.</div>';
+        mainAmount.textContent = 'Impossible';
+        coinsAddDisplay.textContent = 'Impossible';
+        return;
+      }
       const A = (low + high) / 2;
       const coinsToAdd = A / D_eff;
       const totalInvFinal = C + A;
@@ -1935,13 +1943,18 @@ resultDiv.innerHTML = `
       GLOBAL.fee = (feeRaw === '' || !Number.isFinite(feeParsed) || feeParsed < 0) ? 0.4 : feeParsed;
       GLOBAL.prevLoss = parseFloat(document.getElementById('globalPrevLoss').value) || 0;
       updateAvgDisplay();
-      localStorage.setItem('cryptocal_global', JSON.stringify(GLOBAL));
+      try { localStorage.setItem('cryptocal_global', JSON.stringify(GLOBAL)); } catch (err) { console.warn('Could not save values:', err); }
     }
 
     function loadFromStorage() {
-      const saved = localStorage.getItem('cryptocal_global');
-      if (saved) {
-        const parsed = JSON.parse(saved);
+      let parsed = null;
+      try {
+        const saved = localStorage.getItem('cryptocal_global');
+        parsed = saved ? JSON.parse(saved) : null;
+      } catch (err) {
+        console.warn('Saved values unreadable, starting empty:', err); // corrupt / blocked storage must not stop the calculators loading
+      }
+      if (parsed && typeof parsed === 'object') {
         GLOBAL.invested = parsed.invested || 0;
         GLOBAL.coins = parsed.coins || 0;
         const savedFee = Number(parsed.fee);
@@ -2058,9 +2071,9 @@ resultDiv.innerHTML = `
 
       const dcaModeEl = document.getElementById('dcaMode');
       if (dcaModeEl) {
-        dcaModeEl.value = localStorage.getItem('dca_mode') || 'percent';
+        try { dcaModeEl.value = localStorage.getItem('dca_mode') || 'percent'; } catch (err) { dcaModeEl.value = 'percent'; }
         dcaModeEl.addEventListener('change', () => {
-          localStorage.setItem('dca_mode', dcaModeEl.value);
+          try { localStorage.setItem('dca_mode', dcaModeEl.value); } catch (err) { /* storage unavailable: mode just isn't remembered */ }
           updateDCA();
         });
       }
