@@ -202,13 +202,16 @@
 <script>
 let allSymbols = [];
 let csvData = '';
+let csvMeta = { symbol: '', tf: '' }; // what the CSV in csvData was extracted for (the inputs may change afterwards)
 let selectedSymbol = 'BTCUSDT';
 
 // 1. Initialize Symbols and Custom Search
 async function init() {
   try {
     const r = await fetch('https://fapi.binance.com/fapi/v1/exchangeInfo');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
+    if (!data || !Array.isArray(data.symbols)) throw new Error('Unexpected response');
     allSymbols = data.symbols
       .filter(s => s.status === 'TRADING')
       .map(s => s.symbol)
@@ -217,6 +220,8 @@ async function init() {
     setupSearch();
   } catch (e) {
     console.error("Failed to load symbols");
+    const lt = document.getElementById('logText');
+    if (lt) lt.textContent = "Could not load the Binance Futures symbol list (blocked or offline?). Reload to retry.";
   }
 }
 
@@ -309,7 +314,7 @@ async function fetchData() {
       endTime = data[0][0] - 1;
 
       // Rate limit protection
-      await new Promise(r => setTimeout(r, 100));
+      await new Promise(r => setTimeout(r, 300)); // limit=1500 costs weight 10 per call: 100ms would exceed the 2400/min IP limit
     } catch (e) {
       if (++retries > 5) { failed = true; break; } // give up instead of retrying forever
       logText.textContent = "Error. Retrying...";
@@ -339,6 +344,7 @@ async function fetchData() {
   });
 
   csvData = rows.join('\n');
+  csvMeta = { symbol: selectedSymbol, tf };
 
   statsDiv.innerHTML = `
     <div class="stat-row"><span>Total Candles:</span><span class="stat-val">${clean.length.toLocaleString()}</span></div>
@@ -357,10 +363,11 @@ function downloadCSV() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${selectedSymbol}_${document.getElementById('tf').value}_data.csv`;
+  a.download = `${csvMeta.symbol || selectedSymbol}_${csvMeta.tf || document.getElementById('tf').value}_data.csv`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 init();

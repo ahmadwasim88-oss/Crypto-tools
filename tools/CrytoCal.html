@@ -1940,7 +1940,7 @@ resultDiv.innerHTML = `
       GLOBAL.coins = parseFloat(document.getElementById('globalCoins').value) || 0;
       const feeRaw = document.getElementById('globalFee').value;
       const feeParsed = parseFloat(feeRaw);
-      GLOBAL.fee = (feeRaw === '' || !Number.isFinite(feeParsed) || feeParsed < 0) ? 0.4 : feeParsed;
+      GLOBAL.fee = (feeRaw === '' || !Number.isFinite(feeParsed) || feeParsed < 0 || feeParsed >= 100) ? 0.4 : feeParsed;
       GLOBAL.prevLoss = parseFloat(document.getElementById('globalPrevLoss').value) || 0;
       updateAvgDisplay();
       try { localStorage.setItem('cryptocal_global', JSON.stringify(GLOBAL)); } catch (err) { console.warn('Could not save values:', err); }
@@ -1958,7 +1958,7 @@ resultDiv.innerHTML = `
         GLOBAL.invested = parsed.invested || 0;
         GLOBAL.coins = parsed.coins || 0;
         const savedFee = Number(parsed.fee);
-        GLOBAL.fee = (parsed.fee !== undefined && parsed.fee !== null && Number.isFinite(savedFee) && savedFee >= 0) ? savedFee : 0.4;
+        GLOBAL.fee = (parsed.fee !== undefined && parsed.fee !== null && Number.isFinite(savedFee) && savedFee >= 0 && savedFee < 100) ? savedFee : 0.4;
         GLOBAL.prevLoss = parsed.prevLoss || 0;
       }
 

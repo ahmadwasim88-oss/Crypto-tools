@@ -225,6 +225,7 @@ function press(key) {
   else if (key === '-') {
     if (val.startsWith('-')) state[currentTool][activeId] = val.slice(1);
     else state[currentTool][activeId] = '-' + val;
+    justSelected = false; // the next digit must follow the sign, not replace the whole field
   }
   else if (key === '.') { if (!val.includes('.')) state[currentTool][activeId] += '.'; justSelected = false; }
   else {
@@ -243,11 +244,11 @@ function calculate() {
   if (currentTool === 0) {
     const a = n('a'), b = n('b');
     if (!isNaN(a) && !isNaN(b) && a !== 0) {
-      const d = ((b-a)/a)*100;
+      const d = ((b-a)/Math.abs(a))*100; // |a| keeps the sign right for a negative starting value
       res = (d > 0 ? "+" : "") + d.toFixed(2) + "%";
       cls = d > 0 ? "pos" : (d < 0 ? "neg" : "");
       label = "PERCENTAGE CHANGE";
-      proof = `${a} ${d >= 0 ? '+' : '-'} (${a} × ${Math.abs(d).toFixed(2)}%) = ${highlight(b)}`;
+      proof = `${a} ${d >= 0 ? '+' : '-'} (${Math.abs(a)} × ${Math.abs(d).toFixed(2)}%) = ${highlight(b)}`;
     }
   } else if (currentTool === 1) {
     const l = n('c');
@@ -258,14 +259,14 @@ function calculate() {
     }
   } else if (currentTool === 2) {
     const p = n('d'), f = n('e');
-    if (!isNaN(p) && !isNaN(f) && p !== -100) { // -100% would divide by zero: no original value exists
+    if (!isNaN(p) && !isNaN(f) && p > -100) { // -100% would divide by zero: no original value exists
       const orig = (f / (1 + p/100));
       res = orig.toLocaleString(undefined, {maximumFractionDigits:2}); label = "ORIGINAL VALUE";
       proof = `${orig.toFixed(2)} ${p >= 0 ? '+' : '-'} ${Math.abs(p)}% = ${highlight(f)}`;
     }
   } else if (currentTool === 3) {
     const p = n('f'), pt = n('g');
-    if (p && pt) {
+    if (!isNaN(p) && pt) { // a part of 0 is valid (total 0); only a 0% or empty share is not
       const total = (p*100)/pt;
       res = total.toLocaleString(undefined, {maximumFractionDigits:2}); label = "TOTAL AMOUNT";
       proof = `${total.toFixed(2)} × ${pt}% = ${highlight(p)}`;

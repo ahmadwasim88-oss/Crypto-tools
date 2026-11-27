@@ -2704,7 +2704,7 @@
  
  <script>
   (async function() {
-   
+   let dataEpoch = 0; // bumped by "Clear all data": fetch loops that started earlier stop writing their results back
    const currentStatus = document.getElementById('currentStatus');
    const statusLine = document.getElementById('statusLine');
    const statusLineText = document.getElementById('statusLineText');
@@ -3324,12 +3324,14 @@
     if (!need.length) return;
     athBatchInFlight = true;
     let changed = false;
+    const epoch = dataEpoch;
     try {
      for (const id of need) {
       try {
        let e = athCache[id];
        if (!e || !e.fetchedAt || (Date.now() - e.fetchedAt) > ATH_TTL_MS) {
         e = await fetchBinanceAthAtl(id);
+        if (epoch !== dataEpoch) break; // data was cleared while this request was in flight
         if (e) { athCache[id] = e; saveAthCache(); }
        }
        const baseSym = id.replace(/USDT$/, '');
@@ -3346,7 +3348,7 @@
       }
       await new Promise(r => setTimeout(r, 100));
      }
-     if (changed) {
+     if (changed && epoch === dataEpoch) {
       saveMarketData();
       recomputeHoldingSignals();
       updatePricesInTable();
@@ -4282,7 +4284,8 @@ const stale = ids.filter(id => {
       staleFeeds = 0,
       failed = 0,
       lastErr = '';
-     for (let i = 0; i < stale.length; i++) {
+      const epoch = dataEpoch;
+      for (let i = 0; i < stale.length; i++) {
       const id = stale[i];
       taLastAttempt[id] = Date.now();
       setActivityStatus(`Updating TA (${i + 1}/${stale.length}: ${id})…`, 'info');
@@ -4292,8 +4295,9 @@ const stale = ids.filter(id => {
        await new Promise(r => setTimeout(r, 15000));
        closes = await fetchTaHistory(id);
       }
-      if (!closes) {
-       failed++;
+      if (epoch !== dataEpoch) return; // data was cleared while this request was in flight
+       if (!closes) {
+        failed++;
        lastErr = fetchTaHistory.lastErr || lastErr;
        continue;
       }
@@ -6650,10 +6654,10 @@ else if (expandedRowId) {
     const fmtDcaDate = (ds) => {
      if (!ds) return '—';
      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ds);
-     if (!m) return ds;
+     if (!m) return escHtml(String(ds));
      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
      const yr = Number(m[1]), mo = months[Number(m[2]) - 1], dy = Number(m[3]);
-     if (!mo) return ds;
+     if (!mo) return escHtml(String(ds));
      const curYr = new Date().getUTCFullYear();
      return yr === curYr ? `${dy} ${mo}` : `${dy} ${mo} '${String(yr).slice(-2)}`;
     };
@@ -6898,6 +6902,7 @@ else if (expandedRowId) {
      const macroTa = taCache[MACRO_COIN_ID] || null;
      const usdInr = await ensureUsdInrRate();
      
+     const epoch = dataEpoch;
      for (let i = 0; i < batch.length; i++) {
       const coin = batch[i];
       if (portfolioMap[coin.id]) continue;
@@ -6908,8 +6913,9 @@ else if (expandedRowId) {
        await new Promise(r => setTimeout(r, 15000));
        closes = await fetchTaHistory(coin.id);
       }
-      if (!closes) {
-       discoverFailedCount++;
+      if (epoch !== dataEpoch) break; // data was cleared while this request was in flight
+       if (!closes) {
+        discoverFailedCount++;
        discoverLastErr = fetchTaHistory.lastErr || discoverLastErr;
       } else if (closes.lastTs != null && (Date.now() - closes.lastTs) <= TA_MAX_DATA_AGE_MS) {
        const ta = computeTaFromCloses(closes);
@@ -6927,6 +6933,7 @@ else if (expandedRowId) {
           let athEntry = athCache[coin.id];
           if (!athEntry || !athEntry.fetchedAt || (Date.now() - athEntry.fetchedAt) > ATH_TTL_MS) {
            athEntry = await fetchBinanceAthAtl(coin.id);
+           if (epoch !== dataEpoch) break;
            if (athEntry) { athCache[coin.id] = athEntry; saveAthCache(); }
           }
           Object.assign(md, resolveAthAtlForId(coin.id, coin.symbol, coin.binUsdt, md.current_price, usdInr, md));
@@ -7053,11 +7060,31 @@ else if (expandedRowId) {
      const tgt = (item.target != null && item.target !== '' && !isNaN(Number(item.target))) ? Number(item.target) : null;
      imported.push({ id: newId, symbol: sym || item.symbol, name: item.name || newId, target: tgt });
     }
+    // Only well-formed entries are accepted: price > 0, date as YYYY-MM-DD (anything else is dropped), numeric timestamp.
+    const cleanDcaEntry = (e) => {
+     const row = h => {
+      const price = h && typeof h === 'object' ? Number(h.price) : NaN;
+      if (!(price > 0) || !Number.isFinite(price)) return null;
+      return {
+       price,
+       dateStr: (typeof h.dateStr === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(h.dateStr)) ? h.dateStr : '',
+       timestamp: (typeof h.timestamp === 'number' && Number.isFinite(h.timestamp)) ? h.timestamp : undefined
+      };
+     };
+     const hist = (Array.isArray(e.history) ? e.history : []).map(row).filter(Boolean);
+     const first = hist[0] || row(e);
+     if (!first) return null;
+     return { price: first.price, dateStr: first.dateStr, timestamp: first.timestamp, history: hist.length ? hist : [first] };
+    };
     const importedDca = { ...dcaLogCache };
     for (const [oldId, entry] of Object.entries(rawDca)) {
      const mappedId = idMap[oldId] || (oldId.endsWith('USDT') ? oldId : null);
-     if (mappedId && entry && typeof entry === 'object' && !Array.isArray(entry)) importedDca[mappedId] = entry;
+     if (!mappedId || !entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+     const clean = cleanDcaEntry(entry);
+     if (clean) importedDca[mappedId] = clean;
     }
+    const keepIds = new Set(imported.map(c => c.id));
+    for (const k of Object.keys(importedDca)) if (!keepIds.has(k)) delete importedDca[k]; // no stale logs for coins that are gone
     saved = imported;
     dcaLogCache = importedDca;
     save();
@@ -7162,7 +7189,7 @@ else if (expandedRowId) {
       await new Promise(r => setTimeout(r, 80));
       const ok = await confirmDialog({
        title: 'Restore backup?',
-       message: `Replace your current ${saved.length} coin(s) with ${impCount} coin(s) from this backup and merge DCA logs?`,
+       message: `Replace your current ${saved.length} coin(s) with ${impCount} coin(s) from this backup and merge DCA logs for these coins?`,
        okLabel: 'Restore',
        danger: true
       });
@@ -7184,6 +7211,7 @@ else if (expandedRowId) {
       danger: true
      });
      if (!ok) return;
+     dataEpoch++; // in-flight TA / discovery / ATH loops see this and stop instead of re-saving deleted data
      closeCoinPopup();
      closePortfolioWebSocket();
      wsDirtyIds.clear();
