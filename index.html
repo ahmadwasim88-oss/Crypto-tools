@@ -801,9 +801,15 @@
     const sent = {}; // inputs for the sentiment meter, filled in by the loaders below
 
     async function getJSON(url) {
-      const r = await fetch(url);
-      if (!r.ok) throw new Error(url + " → " + r.status);
-      return r.json();
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), 10000); // a stalled connection must not keep a refresh locked forever
+      try {
+        const r = await fetch(url, { signal: ctl.signal });
+        if (!r.ok) throw new Error(url + " → " + r.status);
+        return await r.json();
+      } finally {
+        clearTimeout(timer);
+      }
     }
 
     // Binance public data, with the data mirror as a fallback host
@@ -855,7 +861,7 @@
 
     // Altcoin Season (CMC-style, 90d): share of ~45 major alts that beat BTC over 90 days.
     // Uses Binance daily candles; cached 1h since it moves slowly.
-    const ALTS = ["ETH","BNB","XRP","SOL","ADA","DOGE","TRX","AVAX","LINK","DOT","LTC","BCH","NEAR","UNI","ATOM","ETC","XLM","FIL","APT","ARB","OP","INJ","SUI","AAVE","MKR","ICP","HBAR","VET","ALGO","GRT","SAND","MANA","EGLD","RUNE","IMX","LDO","STX","TIA","SEI","PEPE","SHIB","TON","ONDO","TAO","WLD"];
+    const ALTS = ["ETH","BNB","XRP","SOL","ADA","DOGE","TRX","AVAX","LINK","DOT","LTC","BCH","NEAR","UNI","ATOM","ETC","XLM","FIL","APT","ARB","OP","INJ","SUI","AAVE","ICP","HBAR","VET","ALGO","GRT","SAND","MANA","EGLD","RUNE","IMX","LDO","STX","TIA","SEI","PEPE","SHIB","TON","ONDO","TAO","WLD"];
     const WATCH = ["BTC"].concat(ALTS); // edit this list to match your own watchlist
 
     async function change90(sym) {
@@ -890,7 +896,15 @@
     // Prices + movers: one Binance call
     async function loadTickers() {
       const syms = WATCH.map((x) => x + "USDT");
-      const t = await bn("/api/v3/ticker/24hr?symbols=" + encodeURIComponent(JSON.stringify(syms)));
+      let t;
+      try {
+        t = await bn("/api/v3/ticker/24hr?symbols=" + encodeURIComponent(JSON.stringify(syms)));
+      } catch (e) {
+        // One delisted/invalid symbol makes Binance reject the whole batch: fall back to one request per symbol
+        const rs = await Promise.allSettled(syms.map((s) => bn("/api/v3/ticker/24hr?symbol=" + s)));
+        t = rs.filter((r) => r.status === "fulfilled").map((r) => r.value);
+        if (!t.length) throw e;
+      }
       const by = {};
       t.forEach((x) => (by[x.symbol] = x));
       [["BTC", "btc"], ["ETH", "eth"]].forEach(([c, id]) => {
@@ -986,7 +1000,7 @@
       if (sent.rsi != null) parts.push([cl(((sent.rsi - 30) / 50) * 100), 15]);
       if (sent.pi != null) parts.push([100 - cl((sent.pi / 40) * 100), 15]);
       if (sent.alt != null) parts.push([sent.alt, 10]);
-      if (sent.fund != null) parts.push([cl((sent.fund / 0.05) * 100), 10]);
+      if (sent.fund != null) parts.push([cl(50 + ((sent.fund - 0.01) / 0.04) * 50), 10]); // 0.01% (Binance neutral baseline) = 50, +0.05% = 100, -0.03% = 0
       if (parts.length < 3) return;
       const w = parts.reduce((a, p) => a + p[1], 0);
       const score = Math.round(parts.reduce((a, p) => a + p[0] * p[1], 0) / w);
