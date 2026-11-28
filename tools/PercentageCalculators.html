@@ -24,6 +24,7 @@ body {
   font-family: 'Inter', sans-serif;
   background: var(--bg);
   color: var(--text);
+  height: 100vh;
   height: 100dvh;
   display: flex;
   flex-direction: column;
@@ -47,8 +48,16 @@ nav button {
 }
 nav button.active { background: var(--surface-light); color: var(--text); box-shadow: 0 2px 4px rgba(0,0,0,0.3); }
 
-main { flex: 1; overflow-y: auto; padding: 0 16px; display: flex; flex-direction: column; }
-
+main {
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 16px;
+  display: flex;
+  flex-direction: column;
+}
 .info-box { margin-bottom: 20px; padding: 4px; }
 .info-box h2 { font-size: 18px; font-weight: 700; margin-bottom: 6px; color: var(--text); }
 .info-box p { font-size: 13px; line-height: 1.5; color: var(--text-dim); }
@@ -121,6 +130,12 @@ main { flex: 1; overflow-y: auto; padding: 0 16px; display: flex; flex-direction
 
 .pos { color: var(--pos); }
 .neg { color: var(--neg); }
+  header,
+nav,
+.result-hub,
+.keypad {
+  flex-shrink: 0;
+}
 </style>
 </head>
 <body>
