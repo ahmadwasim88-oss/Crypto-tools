@@ -20,18 +20,30 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; user-select: none; }
 
+html {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+  background: var(--bg);
+}
+
 body {
   font-family: 'Inter', sans-serif;
   background: var(--bg);
   color: var(--text);
-  height: 100vh;
-  height: 100dvh;
+  position: fixed;
+  inset: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  overscroll-behavior: none;
 }
 
-header { padding: 16px 20px 8px; border-bottom: 1px solid var(--surface-light); }
+header {
+  flex-shrink: 0;
+  padding: calc(12px + env(safe-area-inset-top)) 20px 8px;
+  border-bottom: 1px solid var(--surface-light);
+}
 header h1 { font-size: 14px; font-weight: 800; color: var(--accent); letter-spacing: 2px; }
 
 nav {
@@ -51,13 +63,13 @@ nav button.active { background: var(--surface-light); color: var(--text); box-sh
 main {
   flex: 1 1 0;
   min-height: 0;
-  min-width: 0;
   overflow-y: auto;
-  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   padding: 0 16px;
   display: flex;
   flex-direction: column;
 }
+
 .info-box { margin-bottom: 20px; padding: 4px; }
 .info-box h2 { font-size: 18px; font-weight: 700; margin-bottom: 6px; color: var(--text); }
 .info-box p { font-size: 13px; line-height: 1.5; color: var(--text-dim); }
@@ -78,6 +90,7 @@ main {
 .field-value:empty::after { content: '0'; color: #374151; }
 
 .keypad {
+  flex-shrink: 0;
   background: var(--surface);
   padding: 10px 10px calc(10px + env(safe-area-inset-bottom));
   display: grid;
@@ -101,6 +114,7 @@ main {
 .key.action { background: #374151; color: var(--accent); }
 
 .result-hub {
+  flex-shrink: 0;
   background: var(--surface-light);
   padding: 16px 20px;
   display: flex;
@@ -130,11 +144,15 @@ main {
 
 .pos { color: var(--pos); }
 .neg { color: var(--neg); }
-  header,
-nav,
-.result-hub,
-.keypad {
-  flex-shrink: 0;
+
+/* Keep layout comfortable on shorter screens */
+@media (max-height: 680px) {
+  nav { margin: 8px 16px; }
+  .info-box { margin-bottom: 12px; }
+  .input-area { gap: 8px; margin-bottom: 12px; }
+  .input-field { padding: 10px 14px; }
+  .result-hub { padding: 12px 20px; }
+  .key { height: 50px; }
 }
 </style>
 </head>
@@ -240,7 +258,7 @@ function press(key) {
   else if (key === '-') {
     if (val.startsWith('-')) state[currentTool][activeId] = val.slice(1);
     else state[currentTool][activeId] = '-' + val;
-    justSelected = false; // the next digit must follow the sign, not replace the whole field
+    justSelected = false;
   }
   else if (key === '.') { if (!val.includes('.')) state[currentTool][activeId] += '.'; justSelected = false; }
   else {
@@ -259,7 +277,7 @@ function calculate() {
   if (currentTool === 0) {
     const a = n('a'), b = n('b');
     if (!isNaN(a) && !isNaN(b) && a !== 0) {
-      const d = ((b-a)/Math.abs(a))*100; // |a| keeps the sign right for a negative starting value
+      const d = ((b-a)/Math.abs(a))*100;
       res = (d > 0 ? "+" : "") + d.toFixed(2) + "%";
       cls = d > 0 ? "pos" : (d < 0 ? "neg" : "");
       label = "PERCENTAGE CHANGE";
@@ -274,14 +292,14 @@ function calculate() {
     }
   } else if (currentTool === 2) {
     const p = n('d'), f = n('e');
-    if (!isNaN(p) && !isNaN(f) && p > -100) { // -100% would divide by zero: no original value exists
+    if (!isNaN(p) && !isNaN(f) && p > -100) {
       const orig = (f / (1 + p/100));
       res = orig.toLocaleString(undefined, {maximumFractionDigits:2}); label = "ORIGINAL VALUE";
       proof = `${orig.toFixed(2)} ${p >= 0 ? '+' : '-'} ${Math.abs(p)}% = ${highlight(f)}`;
     }
   } else if (currentTool === 3) {
     const p = n('f'), pt = n('g');
-    if (!isNaN(p) && pt) { // a part of 0 is valid (total 0); only a 0% or empty share is not
+    if (!isNaN(p) && pt) {
       const total = (p*100)/pt;
       res = total.toLocaleString(undefined, {maximumFractionDigits:2}); label = "TOTAL AMOUNT";
       proof = `${total.toFixed(2)} × ${pt}% = ${highlight(p)}`;
@@ -296,201 +314,5 @@ function calculate() {
 
 setTool(0);
 </script>
-  
-<script>
-(() => {
-  const panel = document.createElement('div');
-
-  panel.id = 'layout-diagnostic';
-  panel.style.cssText = `
-    position:fixed;
-    top:8px;
-    left:8px;
-    right:8px;
-    z-index:2147483647;
-    background:#111827;
-    color:#fff;
-    border:1px solid #64748b;
-    border-radius:12px;
-    padding:10px;
-    font:12px/1.5 monospace;
-    box-shadow:0 4px 20px #0009;
-  `;
-
-  panel.innerHTML = `
-    <div style="display:flex;gap:6px;flex-wrap:wrap">
-      <button id="diagCapture">Capture</button>
-      <button id="diagCopy">Copy report</button>
-      <button id="diagHide">Hide panel</button>
-    </div>
-    <pre id="diagOutput" style="
-      white-space:pre-wrap;
-      overflow-wrap:anywhere;
-      max-height:35vh;
-      overflow:auto;
-      margin:8px 0 0;
-      color:#a7f3d0;
-    ">Ready to measure calculator layout.</pre>
-  `;
-
-  document.body.appendChild(panel);
-
-  const selectors = [
-    'body',
-    'header',
-    'nav',
-    'main',
-    '.info-box',
-    '.input-area',
-    '.input-field',
-    '.result-hub',
-    '.res-info',
-    '.res-val',
-    '#res-summary',
-    '.keypad',
-    '.key'
-  ];
-
-  let report = null;
-
-  function measureElement(selector) {
-    const el = document.querySelector(selector);
-
-    if (!el) return null;
-
-    const rect = el.getBoundingClientRect();
-    const css = getComputedStyle(el);
-
-    return {
-      top: +rect.top.toFixed(1),
-      bottom: +rect.bottom.toFixed(1),
-      height: +rect.height.toFixed(1),
-      width: +rect.width.toFixed(1),
-      clientHeight: el.clientHeight,
-      scrollHeight: el.scrollHeight,
-      offsetHeight: el.offsetHeight,
-      flex: css.flex,
-      flexShrink: css.flexShrink,
-      flexGrow: css.flexGrow,
-      minHeight: css.minHeight,
-      heightCSS: css.height,
-      paddingTop: css.paddingTop,
-      paddingBottom: css.paddingBottom,
-      gap: css.gap,
-      overflowY: css.overflowY,
-      display: css.display
-    };
-  }
-
-  function capture() {
-    const vv = window.visualViewport;
-
-    const elements = {};
-
-    selectors.forEach(selector => {
-      if (selector === '.key') {
-        const keys = [...document.querySelectorAll('.key')];
-        elements[selector] = keys.map((key, index) => {
-          const r = key.getBoundingClientRect();
-          return {
-            index: index + 1,
-            top: +r.top.toFixed(1),
-            bottom: +r.bottom.toFixed(1),
-            height: +r.height.toFixed(1)
-          };
-        });
-      } else if (selector === '.input-field') {
-        elements[selector] = [...document.querySelectorAll(selector)]
-          .map(el => {
-            const r = el.getBoundingClientRect();
-            return {
-              top: +r.top.toFixed(1),
-              bottom: +r.bottom.toFixed(1),
-              height: +r.height.toFixed(1)
-            };
-          });
-      } else {
-        elements[selector] = measureElement(selector);
-      }
-    });
-
-    const bodyCSS = getComputedStyle(document.body);
-
-    report = {
-      timestamp: new Date().toISOString(),
-
-      displayMode:
-        matchMedia('(display-mode: standalone)').matches
-          ? 'standalone'
-          : 'browser',
-
-      viewport: {
-        innerWidth,
-        innerHeight,
-        clientWidth: document.documentElement.clientWidth,
-        clientHeight: document.documentElement.clientHeight,
-        visualViewportHeight: vv ? +vv.height.toFixed(1) : null,
-        visualViewportOffsetTop: vv ? vv.offsetTop : null,
-        screenHeight: screen.height,
-        screenAvailableHeight: screen.availHeight
-      },
-
-      body: {
-        height: bodyCSS.height,
-        minHeight: bodyCSS.minHeight,
-        display: bodyCSS.display,
-        flexDirection: bodyCSS.flexDirection,
-        overflow: bodyCSS.overflow,
-        clientHeight: document.body.clientHeight,
-        scrollHeight: document.body.scrollHeight
-      },
-
-      document: {
-        clientHeight: document.documentElement.clientHeight,
-        scrollHeight: document.documentElement.scrollHeight,
-        scrollTop: document.documentElement.scrollTop,
-        verticalOverflow:
-          document.documentElement.scrollHeight >
-          document.documentElement.clientHeight
-      },
-
-      elements
-    };
-
-    document.getElementById('diagOutput').textContent =
-      JSON.stringify(report, null, 2);
-  }
-
-  document.getElementById('diagCapture')
-    .addEventListener('click', capture);
-
-  document.getElementById('diagCopy')
-    .addEventListener('click', async () => {
-      if (!report) capture();
-
-      const text = JSON.stringify(report, null, 2);
-
-      try {
-        await navigator.clipboard.writeText(text);
-        document.getElementById('diagCopy').textContent = 'Copied!';
-      } catch {
-        const area = document.createElement('textarea');
-        area.value = text;
-        document.body.appendChild(area);
-        area.select();
-        document.execCommand('copy');
-        area.remove();
-      }
-    });
-
-  document.getElementById('diagHide')
-    .addEventListener('click', () => {
-      panel.style.display = 'none';
-    });
-
-  capture();
-})();
-          </script>
-  
 </body>
 </html>
