@@ -1,0 +1,120 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#101827">
+<title>PWA Layout Diagnostic</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;padding:18px;background:#0b1120;color:#edf3ff;font:14px/1.5 system-ui,sans-serif}
+h2{font-size:21px;margin:4px 0}
+p{color:#aab7ca}
+button{border:0;border-radius:10px;padding:12px;background:#3978ef;color:white;font-weight:700;margin:5px 4px 5px 0}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#151f32;padding:14px;border-radius:12px;font-size:12px;overflow:auto}
+.card{background:#151f32;border:1px solid #29364d;border-radius:14px;padding:14px;margin:14px 0}
+</style>
+</head>
+<body>
+<h2>PWA Layout Diagnostic</h2>
+<p>Open this page in normal Chrome and installed PWA mode. Capture and compare both reports.</p>
+<div class="card">
+<button onclick="capture()">Capture measurements</button>
+<button onclick="copyReport()">Copy report</button>
+<button onclick="clearReport()">Clear</button>
+</div>
+<div class="card">
+<strong>Environment and viewport</strong>
+<pre id="viewport">Waiting for capture...</pre>
+</div>
+<div class="card">
+<strong>Calculator layout elements</strong>
+<pre id="elements">Waiting for capture...</pre>
+</div>
+<div class="card">
+<strong>Overflow checks</strong>
+<pre id="overflow">Waiting for capture...</pre>
+</div>
+<script>
+let report={};
+function rect(el){
+if(!el)return null;
+const r=el.getBoundingClientRect();
+const s=getComputedStyle(el);
+return{
+top:+r.top.toFixed(1),
+bottom:+r.bottom.toFixed(1),
+height:+r.height.toFixed(1),
+scrollHeight:el.scrollHeight,
+clientHeight:el.clientHeight,
+flex:s.flex,
+flexShrink:s.flexShrink,
+minHeight:s.minHeight,
+overflowY:s.overflowY,
+position:s.position
+};
+}
+function capture(){
+const vv=window.visualViewport;
+const selectors=['header','nav','main','.result-hub','.keypad'];
+const layout={};
+selectors.forEach(s=>{
+const el=document.querySelector(s);
+if(el)layout[s]=rect(el);
+});
+const viewport={
+time:new Date().toISOString(),
+displayMode:matchMedia('(display-mode: standalone)').matches?'standalone':matchMedia('(display-mode: fullscreen)').matches?'fullscreen':'browser',
+innerWidth,
+innerHeight,
+clientWidth:document.documentElement.clientWidth,
+clientHeight:document.documentElement.clientHeight,
+visualViewport:vv?{
+width:+vv.width.toFixed(1),
+height:+vv.height.toFixed(1),
+offsetTop:+vv.offsetTop.toFixed(1),
+scale:vv.scale
+}:null,
+screenWidth:screen.width,
+screenHeight:screen.height,
+screenAvailableHeight:screen.availHeight
+};
+const overflow={
+bodyHeight:document.body.clientHeight,
+bodyScrollHeight:document.body.scrollHeight,
+documentHeight:document.documentElement.clientHeight,
+documentScrollHeight:document.documentElement.scrollHeight,
+verticalOverflow:document.documentElement.scrollHeight>document.documentElement.clientHeight,
+horizontalOverflow:document.documentElement.scrollWidth>document.documentElement.clientWidth,
+elements:layout
+};
+report={viewport,layout,overflow};
+document.getElementById('viewport').textContent=JSON.stringify(viewport,null,2);
+document.getElementById('elements').textContent=JSON.stringify(layout,null,2);
+document.getElementById('overflow').textContent=JSON.stringify(overflow,null,2);
+}
+async function copyReport(){
+if(!Object.keys(report).length)capture();
+const data=JSON.stringify(report,null,2);
+try{
+await navigator.clipboard.writeText(data);
+alert('Report copied.');
+}catch(e){
+const area=document.createElement('textarea');
+area.value=data;
+document.body.appendChild(area);
+area.select();
+document.execCommand('copy');
+area.remove();
+alert('Report copied.');
+}
+}
+function clearReport(){
+report={};
+['viewport','elements','overflow'].forEach(id=>document.getElementById(id).textContent='Waiting for capture...');
+}
+window.addEventListener('resize',()=>{});
+</script>
+</body>
+</html>
