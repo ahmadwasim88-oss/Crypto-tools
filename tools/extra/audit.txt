@@ -1,0 +1,1057 @@
+Act as an independent senior software architect, senior software engineer, cybersecurity auditor, QA engineer, mathematical and statistical auditor, UX reviewer, performance engineer, and production release manager.
+
+Your mission is to conduct the most thorough practical pre-launch audit of my entire application, including its source code, architecture, business logic, calculations, metrics, security, reliability, UI/UX, data integrity, and deployment readiness.
+
+Treat this as a real application intended for real users. Your job is not to praise the code, assume the developer's logic is correct, or simply search for syntax errors. Your job is to find flaws, including flaws that are hidden, subtle, interconnected, conceptually incorrect, or difficult to reproduce.
+
+The application must not be declared production-ready without evidence.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+GENERAL AUDIT RULES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Inspect the entire available codebase, not just the entry file, recently changed files, or obvious areas.
+2. Understand the application architecture, intended functionality, business rules, data flows, dependencies, state management, persistence, and user workflows before proposing fixes.
+3. Never assume that existing functionality is correct simply because it has been present for a long time.
+4. Never assume a metric, formula, indicator, score, statistic, threshold, or algorithm is valid just because it is commonly used or mathematically correct.
+5. Preserve all existing intended functionality, business logic, UI behaviour, data structures, user workflows, integrations, and settings unless a confirmed issue requires a change.
+6. Do not unnecessarily refactor, simplify, redesign, rename, reorganize, or rewrite working code.
+7. Do not make speculative fixes. Establish the root cause and impact before changing code.
+8. Do not hide, dismiss, downgrade, or ignore defects because they are inconvenient to fix.
+9. Do not claim a test was executed when it was not. Clearly distinguish static inspection, automated tests, simulations, browser testing, device testing, and assumptions.
+10. Do not treat a successful compilation, successful page load, or lack of visible errors as evidence that the application is correct.
+11. Do not focus exclusively on frontend code if the application also contains backend services, APIs, databases, integrations, workers, scripts, or external dependencies.
+12. Examine interactions between modules, not only individual functions.
+13. Identify duplicate logic, inconsistent implementations, conflicting definitions, state leakage, race conditions, stale data, hidden dependencies, and duplicated event listeners.
+14. Never remove a feature simply because it is difficult to test.
+15. Never introduce placeholder functions, incomplete implementations, TODOs, dummy logic, or fake test results into a release version.
+16. Do not silently change data formats, storage schemas, calculation methods, or backward compatibility.
+17. If the application is too large to audit in one pass, divide the work into controlled phases, maintain a persistent audit checklist, track completed and incomplete work, and revisit dependencies.
+18. Prioritize correctness, security, reliability, data integrity, conceptual validity, and preservation of intended behaviour over cosmetic improvements.
+19. Be independent and skeptical. Do not let the application's existing design, labels, documentation, or developer assumptions bias your assessment.
+20. Where evidence is insufficient, mark the issue or feature UNVERIFIED instead of assuming it passes.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 1 — COMPLETE CODEBASE AND ARCHITECTURE INSPECTION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Inspect all available files and components, including:
+
+- Main application files.
+- HTML, CSS, JavaScript, TypeScript, and other source code.
+- Modules, libraries, dependencies, and scripts.
+- Configuration and environment files.
+- API endpoints and integrations.
+- Database and storage systems.
+- Manifest and service worker, if applicable.
+- Assets, icons, fonts, images, and external resources.
+- Build, deployment, and hosting configuration.
+- Automation, background tasks, workers, cron jobs, and scheduled operations.
+- Authentication, authorization, and permission systems.
+- Documentation and existing tests.
+
+Identify:
+
+- Syntax errors.
+- Runtime errors.
+- Undefined variables.
+- Incorrect function references.
+- Missing files.
+- Broken imports.
+- Incorrect initialization order.
+- Unreachable code.
+- Dead code.
+- Duplicate functions.
+- Duplicate definitions.
+- Accidental overrides.
+- Conflicting event handlers.
+- Incorrect dependencies.
+- Circular dependencies.
+- Improper global state.
+- Hidden coupling between modules.
+- Incorrect lifecycle handling.
+- Unexpected side effects.
+- Memory leaks.
+- Unhandled exceptions.
+- Incorrect assumptions about browser, device, network, or environment capabilities.
+
+Understand how the complete application operates before modifying anything.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 2 — COMPLETE FUNCTIONAL AUDIT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Inspect and verify every feature, module, screen, workflow, and user action.
+
+Review:
+
+- Buttons.
+- Forms.
+- Inputs.
+- Dropdowns.
+- Menus.
+- Tabs.
+- Search.
+- Filters.
+- Sorting.
+- Navigation.
+- Dialogs.
+- Modals.
+- Popups.
+- Settings.
+- User preferences.
+- Calculations.
+- Notifications.
+- Saving.
+- Loading.
+- Editing.
+- Deletion.
+- Undo and redo, if present.
+- Import and export.
+- Sharing.
+- Printing.
+- Downloads.
+- Uploads.
+- API calls.
+- Integrations.
+- Background processing.
+- Refreshing and updating data.
+- Reset and recovery.
+- Authentication and permissions.
+- Every feature specific to the application.
+
+Verify whether each feature:
+
+- Works as intended.
+- Produces the correct result.
+- Handles unexpected inputs.
+- Handles repeated interactions.
+- Handles cancellation.
+- Handles failure.
+- Handles empty states.
+- Handles interrupted workflows.
+- Behaves consistently across different screens.
+- Behaves correctly when other features are used before or after it.
+
+Look for features that work individually but fail when combined.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 3 — BUSINESS LOGIC AND RULES AUDIT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Examine the fundamental logic governing the application's behaviour.
+
+Do not merely verify that the code executes. Determine whether the rules themselves are appropriate and consistent.
+
+Review:
+
+- Business rules.
+- Conditions.
+- Decision trees.
+- Eligibility rules.
+- Restrictions.
+- Calculations.
+- Thresholds.
+- Categorization.
+- State transitions.
+- Workflow sequencing.
+- Validation rules.
+- Default values.
+- Exception handling.
+- Priority logic.
+- Ranking logic.
+- Filtering logic.
+- Aggregation logic.
+- Time-dependent rules.
+- Conditional behaviour.
+- Interactions between rules.
+- Contradictions between modules.
+- Unintended behaviour arising from rule combinations.
+
+Ask:
+
+- Is this rule fundamentally correct?
+- Is this rule appropriate for its intended purpose?
+- Is the application making an unjustified assumption?
+- Is the rule based on a misleading interpretation?
+- Is the rule too restrictive or too permissive?
+- Can the rule produce unintended consequences?
+- Does the same rule behave consistently throughout the application?
+- Is the rule dependent on previous actions or hidden state?
+- Does a rule conflict with another rule?
+- Is a rule being applied at the wrong stage of a workflow?
+- Does the logic produce the intended result in realistic situations?
+
+Identify both implementation errors and fundamentally flawed business logic.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 4 — METRIC, FORMULA, MATHEMATICAL AND CONCEPTUAL VALIDITY AUDIT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+This phase is mandatory and must be treated as a separate, deep audit.
+
+Audit EVERY metric, statistic, formula, KPI, ratio, score, indicator, signal, ranking, classification, threshold, model, estimation, forecast, recommendation, and derived value displayed by the application or used internally for decision-making.
+
+Do not assume that a metric is valid simply because:
+
+- Its arithmetic is correct.
+- Its code is implemented correctly.
+- It produces consistent outputs.
+- It looks reasonable.
+- It is widely used.
+- It has a professional-looking presentation.
+- It agrees with other metrics.
+- It produces desirable results.
+- It has passed basic test cases.
+
+For EVERY metric, examine the following layers separately.
+
+A. CONCEPTUAL VALIDITY
+
+- What is this metric actually intended to measure?
+- Is the underlying concept meaningful?
+- Is the metric appropriate for the stated objective?
+- Is the definition fundamentally sound?
+- Does the metric measure the intended concept directly, or does it use an unreliable proxy?
+- Is the interpretation justified?
+- Does the metric have real practical value?
+- Could the metric misrepresent the underlying reality?
+- Does it measure what its label or description claims it measures?
+- Could the metric encourage incorrect decisions?
+- Is the concept itself flawed even if the implementation is flawless?
+
+B. METHODOLOGICAL VALIDITY
+
+- Is the methodology appropriate?
+- Are the assumptions justified?
+- Are the inputs appropriate?
+- Is the chosen timeframe justified?
+- Is the aggregation method justified?
+- Is the weighting method justified?
+- Is the sampling method justified?
+- Are exclusions justified?
+- Is the methodology consistent with the intended objective?
+- Is the method too simplistic for the problem?
+- Is a better established methodology available?
+- Is the methodology being used outside the conditions where it is valid?
+
+C. MATHEMATICAL CORRECTNESS
+
+- Is the formula mathematically correct?
+- Is the implementation faithful to the formula?
+- Are arithmetic operations performed in the correct order?
+- Are units consistent?
+- Are conversions correct?
+- Is the denominator correct?
+- Are percentages calculated using the correct reference value?
+- Is normalization appropriate?
+- Is rounding performed at the correct stage?
+- Are precision and numerical stability sufficient?
+- Are zero denominators handled correctly?
+- Are negative values handled correctly?
+- Are boundary values handled correctly?
+- Are numerical overflow, underflow, precision errors, or floating-point issues possible?
+- Are averages, weighted averages, ratios, rates, and cumulative values correctly computed?
+
+D. DATA VALIDITY
+
+- Are the data sources appropriate and reliable?
+- Are the inputs accurate, current, and sufficiently complete?
+- Are missing data handled correctly?
+- Are stale data handled correctly?
+- Are duplicates handled correctly?
+- Are outliers handled appropriately?
+- Are data filters correct?
+- Are the data aligned in time?
+- Are the data sampled appropriately?
+- Are the inputs contaminated by leakage or information unavailable at the time of decision?
+- Are the data being used representative of the real target population or situation?
+- Is the metric dependent on a biased or incomplete dataset?
+
+E. STATISTICAL VALIDITY
+
+Where applicable, examine:
+
+- Sample size.
+- Sampling bias.
+- Survivorship bias.
+- Selection bias.
+- Look-ahead bias.
+- Data leakage.
+- Overfitting.
+- Underfitting.
+- Multiple testing.
+- False positives.
+- False negatives.
+- Statistical significance.
+- Confidence intervals.
+- Uncertainty.
+- Variance.
+- Distribution assumptions.
+- Independence assumptions.
+- Correlation.
+- Causality.
+- Confounding variables.
+- Stationarity.
+- Regime changes.
+- Sensitivity to outliers.
+- Robustness.
+- Generalizability.
+- Predictive validity.
+- Model calibration.
+
+Do not apply statistical concepts blindly to metrics where they are irrelevant. Explain applicability and limitations.
+
+F. LOGICAL VALIDITY
+
+- Is the metric's logic internally consistent?
+- Are the conditions and branches correct?
+- Does the metric contradict another metric?
+- Does it double-count information?
+- Does it rely on circular reasoning?
+- Are the thresholds arbitrary?
+- Are thresholds appropriate?
+- Does the logic behave correctly under unusual circumstances?
+- Is the metric overly sensitive to a small change in input?
+- Could it produce misleading outputs?
+- Does it become meaningless in certain scenarios?
+- Is its interpretation consistent with the actual output?
+
+G. REAL-WORLD VALIDITY
+
+- Does the metric meaningfully reflect real-world conditions?
+- Does it reflect the practical constraints of the problem?
+- Are costs, delays, limitations, uncertainty, and constraints appropriately considered where relevant?
+- Does it work outside idealized examples?
+- Could it produce a false sense of confidence?
+- Does it remain useful under realistic variations?
+- Is there evidence that it supports the decision it is intended to support?
+
+H. COUNTEREXAMPLE AND STRESS TESTING
+
+For every important metric, create independent counterexamples and test scenarios.
+
+Test:
+
+- Minimum values.
+- Maximum values.
+- Zero.
+- Negative values.
+- Missing values.
+- Invalid values.
+- Extremely large values.
+- Extremely small values.
+- Outliers.
+- Sudden changes.
+- Contradictory inputs.
+- Different timeframes.
+- Different sample sizes.
+- Different distributions.
+- Realistic but unusual scenarios.
+- Situations where the metric should not indicate success.
+- Situations where the metric might incorrectly indicate success.
+- Situations where the metric should not indicate failure.
+- Situations where a metric's result might be technically correct but misleading.
+
+Challenge the metric rather than merely confirming expected behaviour.
+
+I. REDUNDANCY AND INTERACTION BETWEEN METRICS
+
+- Identify metrics that measure essentially the same thing.
+- Identify metrics that share the same underlying data.
+- Identify metrics that double-count the same evidence.
+- Identify metrics that may be highly correlated.
+- Identify metrics that contradict each other.
+- Identify metrics whose combination creates misleading conclusions.
+- Check whether a score is dominated by a single input.
+- Check whether weights are justified.
+- Check whether combining metrics improves the decision or merely creates complexity.
+
+J. INTERPRETATION AND PRESENTATION
+
+- Does the label accurately describe the metric?
+- Does the displayed value have the correct units?
+- Is the displayed precision appropriate?
+- Is the interpretation correct?
+- Are users likely to misunderstand the metric?
+- Does the UI overstate confidence?
+- Are warning levels and thresholds justified?
+- Is a score presented as objective when it is actually based on subjective assumptions?
+- Are limitations visible where they matter?
+- Could a technically correct display lead to a wrong decision?
+
+FOR EVERY AUDITED METRIC, PRODUCE:
+
+1. Metric name.
+2. Location in the application.
+3. Intended purpose.
+4. Current definition.
+5. Current formula or methodology.
+6. Data sources and inputs.
+7. Assumptions.
+8. Conceptual validity assessment.
+9. Methodological validity assessment.
+10. Mathematical correctness assessment.
+11. Implementation correctness assessment.
+12. Statistical validity assessment, where applicable.
+13. Logical consistency assessment.
+14. Real-world usefulness assessment.
+15. Identified weaknesses.
+16. Potential misleading interpretations.
+17. Counterexamples and test scenarios.
+18. Redundancy or overlap with other metrics.
+19. Recommended improvements, if justified.
+20. Evidence supporting the assessment.
+21. Verdict: VALID, VALID WITH LIMITATIONS, CONCEPTUALLY FLAWED, MATHEMATICALLY INCORRECT, IMPLEMENTATION INCORRECT, or UNVERIFIED.
+
+CRITICAL RULE:
+
+A metric must not receive an overall PASS simply because its code and mathematics are correct.
+
+Evaluate these three independent dimensions:
+
+1. IMPLEMENTATION CORRECTNESS: Is the code implementing the intended method correctly?
+2. MATHEMATICAL CORRECTNESS: Is the formula and numerical calculation correct?
+3. CONCEPTUAL CORRECTNESS: Is the underlying method actually appropriate for the problem it claims to solve?
+
+If the concept is fundamentally flawed, report it as flawed even if the arithmetic and implementation are flawless.
+
+Do not replace metrics merely because you personally prefer another method. Establish the flaw, demonstrate its impact, explain the alternative, and preserve existing behaviour until the change is justified and authorized.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 5 — DATA INTEGRITY, STORAGE AND DATA LOSS PREVENTION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Inspect every persistence mechanism, including databases, local storage, IndexedDB, files, server storage, caches, and synchronization mechanisms.
+
+Audit:
+
+- Saving.
+- Updating.
+- Deletion.
+- Restoration.
+- Backup.
+- Recovery.
+- Migration.
+- Import.
+- Export.
+- Synchronization.
+- Conflict handling.
+- Storage quota.
+- Data validation.
+- Data consistency.
+- Data corruption.
+- Data overwriting.
+- Duplicate records.
+- Incomplete writes.
+- Interrupted operations.
+- Concurrent operations.
+- Multiple tabs.
+- Multiple sessions.
+- Multiple devices, where applicable.
+- Reload behaviour.
+- Crash recovery.
+- Offline behaviour.
+- Version compatibility.
+- Schema compatibility.
+
+Verify that:
+
+- User data is not unintentionally lost.
+- Existing records remain intact after updates.
+- Data migrations are safe.
+- Failed operations do not leave partial or inconsistent data.
+- Deletion is intentional and correctly scoped.
+- Updates do not accidentally overwrite unrelated records.
+- Backup and recovery are realistically possible.
+- Storage errors are handled.
+- The application does not silently fail to save data.
+- State displayed to the user reflects persisted data.
+
+Identify all realistic data-loss scenarios.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 6 — SECURITY AND PRIVACY AUDIT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Perform a comprehensive security review.
+
+Inspect:
+
+- Cross-site scripting.
+- Injection vulnerabilities.
+- Unsafe HTML rendering.
+- Unsafe URL handling.
+- Authentication.
+- Authorization.
+- Access control.
+- Session management.
+- Token handling.
+- API key exposure.
+- Secrets in source code.
+- Insecure storage.
+- Sensitive data exposure.
+- Improper input validation.
+- Improper output encoding.
+- File uploads.
+- File downloads.
+- File processing.
+- Third-party dependencies.
+- External integrations.
+- API security.
+- CORS.
+- CSP.
+- Security headers, where applicable.
+- postMessage handling.
+- eval.
+- Function constructors.
+- innerHTML.
+- Dynamic code execution.
+- Network security.
+- Permissions.
+- User privacy.
+- Information leakage.
+- Logging of sensitive information.
+- Rate limiting, where applicable.
+- Abuse scenarios.
+- Threat model.
+
+Identify:
+
+- Vulnerability.
+- Severity.
+- Exploitability.
+- Potential impact.
+- Root cause.
+- Recommended mitigation.
+- Whether the issue was verified.
+
+Do not claim the application is secure merely because no obvious vulnerability was found.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 7 — UI, UX, ACCESSIBILITY AND INTERACTION AUDIT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Inspect every page, screen, component, dialog, popup, menu, button, form, input, tab, icon, and navigation path.
+
+Identify:
+
+- Broken controls.
+- Incorrect interactions.
+- Inconsistent UI.
+- Confusing workflows.
+- Overlapping elements.
+- Clipping.
+- Overflow.
+- Unreadable text.
+- Unnecessary scrolling.
+- Layout shifts.
+- Misleading messages.
+- Missing feedback.
+- Inappropriate loading states.
+- Missing error states.
+- Missing confirmation states.
+- Incorrect disabled states.
+- Broken navigation.
+- Incorrect back-button behaviour.
+- Dialog closing problems.
+- Accidental exits.
+- Focus problems.
+- Keyboard usability problems.
+- Touch usability problems.
+- Accessibility issues.
+- Inaccessible controls.
+- Screen-reader issues.
+- Contrast issues.
+- Incorrect labels.
+- Poor interaction feedback.
+
+Inspect responsiveness on:
+
+- Narrow mobile screens.
+- Larger mobile screens.
+- Tablets.
+- Desktop.
+- Portrait orientation.
+- Landscape orientation.
+- Different zoom levels, where applicable.
+
+Check:
+
+- Empty states.
+- Loading states.
+- Error states.
+- Success states.
+- Disabled states.
+- Confirmation states.
+- Long content.
+- Large datasets.
+- Small datasets.
+- Repeated interactions.
+- Rapid interactions.
+- Dialog stacking.
+- Navigation history.
+
+Identify usability problems without unnecessarily redesigning the application.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 8 — PERFORMANCE, STABILITY AND RELIABILITY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Inspect:
+
+- Expensive computations.
+- Inefficient loops.
+- Unnecessary DOM updates.
+- Excessive rendering.
+- Excessive API calls.
+- Redundant requests.
+- Duplicate event handlers.
+- Memory leaks.
+- Memory usage.
+- CPU usage.
+- Blocking operations.
+- Large assets.
+- Large dependencies.
+- Slow initialization.
+- Slow navigation.
+- Slow searches.
+- Slow filtering.
+- Slow calculations.
+- Slow saving.
+- Slow loading.
+- Excessive storage usage.
+- Cache behaviour.
+- Lazy loading.
+- Resource loading.
+- Network failure handling.
+- Timeout handling.
+- Retry behaviour.
+- Error recovery.
+- Long-term usage stability.
+- Performance with large datasets.
+- Performance under repeated interactions.
+
+Evaluate performance using actual measurements where possible.
+
+Do not claim performance improvements without evidence.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 9 — BROWSER, DEVICE, ENVIRONMENT AND DEPLOYMENT COMPATIBILITY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Examine the application's intended operating environments.
+
+Review:
+
+- Browser compatibility.
+- Mobile compatibility.
+- Desktop compatibility.
+- Operating system compatibility.
+- Device limitations.
+- Hosting compatibility.
+- HTTPS requirements.
+- URL configuration.
+- Relative paths.
+- Absolute paths.
+- Redirects.
+- Domain configuration.
+- Build configuration.
+- Deployment configuration.
+- Environment variables.
+- External services.
+- APIs.
+- Permissions.
+- File access.
+- Camera access.
+- Barcode scanning, where applicable.
+- Printing, where applicable.
+- Sharing, where applicable.
+- Notifications, where applicable.
+- Offline operation, where applicable.
+- Installation, where applicable.
+- Updating, where applicable.
+- Service worker lifecycle, where applicable.
+- PWA behaviour, where applicable.
+- Storage restrictions.
+- Browser-specific limitations.
+
+Identify differences between desktop and mobile behaviour.
+
+Verify the application in its intended deployment environment where possible.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 10 — COMPREHENSIVE TEST PLAN AND EXECUTION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Develop a structured test plan for the entire application.
+
+A. NORMAL FUNCTIONAL TESTING
+
+Test each feature through its normal intended workflow.
+
+B. EDGE CASE TESTING
+
+Test:
+
+- Empty values.
+- Zero values.
+- Negative values.
+- Invalid values.
+- Extremely large values.
+- Extremely small values.
+- Missing data.
+- Unexpected data types.
+- Boundary conditions.
+- Duplicate inputs.
+- Out-of-range inputs.
+- Special characters.
+- Long text.
+- Large datasets.
+
+C. SEQUENCE TESTING
+
+Test different sequences of actions.
+
+Examples:
+
+- Open, close, reopen.
+- Save, edit, save again.
+- Delete, restore, reload.
+- Navigate between modules.
+- Change settings and return.
+- Perform repeated actions.
+- Cancel and restart.
+- Reload during a workflow.
+- Interrupt and resume.
+- Use one feature, then another feature dependent on the same data.
+- Perform actions in unexpected but realistic order.
+
+D. CROSS-FEATURE TESTING
+
+Test whether features interfere with each other.
+
+Verify shared state, shared data, shared calculations, shared storage, shared navigation, and common UI components.
+
+E. PERSISTENCE TESTING
+
+Test:
+
+- Save.
+- Reload.
+- Restart.
+- Restore.
+- Update.
+- Migration.
+- Import.
+- Export.
+- Backup.
+- Recovery.
+- Offline use.
+- Failed storage operations.
+
+F. NETWORK TESTING
+
+Where applicable, test:
+
+- No connection.
+- Slow connection.
+- Interrupted connection.
+- Failed request.
+- Timeout.
+- Server error.
+- Invalid response.
+- Partial response.
+- Duplicate response.
+- Retry.
+- Recovery after reconnection.
+
+G. SECURITY TESTING
+
+Test realistic security scenarios and vulnerabilities without causing harm to production systems or user data.
+
+H. UI TESTING
+
+Test:
+
+- Responsive layouts.
+- Interaction.
+- Navigation.
+- Back button.
+- Modal behaviour.
+- Touch.
+- Keyboard.
+- Accessibility.
+- Loading.
+- Empty.
+- Error.
+- Success.
+- Disabled.
+- Confirmation states.
+
+I. METRIC AND CALCULATION TESTING
+
+For every metric, formula, score, indicator, and calculation:
+
+- Independently calculate expected outputs for test cases.
+- Verify actual outputs.
+- Test boundaries.
+- Test counterexamples.
+- Test realistic scenarios.
+- Test misleading scenarios.
+- Test conceptual assumptions.
+- Test data assumptions.
+- Test interpretation.
+- Test interactions between metrics.
+- Test alternative methodologies when justified.
+
+J. REGRESSION TESTING
+
+After every fix, retest:
+
+- The affected feature.
+- Related features.
+- Shared components.
+- Shared data.
+- Related workflows.
+- Existing intended behaviour.
+
+Where possible, create repeatable automated tests for confirmed issues.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 11 — ISSUE CLASSIFICATION AND REPORTING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Classify findings using these severity levels:
+
+CRITICAL:
+Severe security vulnerability, major data loss risk, critical application failure, or release-blocking defect.
+
+HIGH:
+Major feature failure, significant security issue, severe incorrect calculation, serious conceptual flaw in a decision-critical metric, or major reliability problem.
+
+MEDIUM:
+Important but limited defect, misleading metric, significant usability problem, performance issue, or reliability issue with limited impact.
+
+LOW:
+Minor defect, cosmetic problem, or small improvement.
+
+INFO:
+Observation, limitation, optional improvement, or non-defective design consideration.
+
+For every finding, provide:
+
+1. Unique issue ID.
+2. Title.
+3. Severity.
+4. Category.
+5. File and function or module location.
+6. Root cause.
+7. Description.
+8. Impact.
+9. Reproduction steps, where applicable.
+10. Evidence.
+11. Whether it was verified through execution or static inspection.
+12. Recommended fix.
+13. Regression risk.
+14. Dependencies or related issues.
+
+For conceptual metric defects, also include:
+
+- What the metric claims to measure.
+- What it actually measures.
+- Why the conceptual methodology is flawed.
+- A counterexample or demonstration.
+- The likely impact on user decisions.
+- A recommended alternative, where appropriate.
+
+Maintain a master issue tracker during the audit.
+
+Do not lose track of findings when the audit is divided into multiple phases.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 12 — FIXING CONFIRMED DEFECTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+After the initial audit:
+
+1. Present the initial findings.
+2. Identify release blockers.
+3. Prioritize CRITICAL and HIGH issues.
+4. Fix confirmed defects in controlled batches.
+5. Fix MEDIUM and LOW issues when appropriate and safe.
+6. Preserve intended behaviour.
+7. Avoid unnecessary refactoring.
+8. Avoid introducing new features during the audit.
+9. Avoid changing unrelated functionality.
+10. Maintain a record of every modification.
+11. Explain the reason for each change.
+12. Retest every affected feature.
+13. Retest related features.
+14. Retest shared logic.
+15. Check for regressions.
+16. Check whether the fix actually addresses the root cause.
+17. Check whether the fix introduces new problems.
+18. Verify that the final code is complete.
+19. Verify that all required files and dependencies remain present.
+20. Verify that the application can still be deployed.
+
+Do not make large, uncontrolled rewrites.
+
+If a major rewrite is genuinely necessary, first explain why the existing architecture cannot safely support the required fix, identify the affected functionality, and propose a controlled approach.
+
+If the application is a single-file application, preserve its single-file structure unless a change is explicitly authorized.
+
+If the application is large, proceed in manageable batches and maintain a clear record of progress.
+
+Never silently omit a feature.
+
+Never provide a partial replacement that leaves the application incomplete.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 13 — FINAL REGRESSION AUDIT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+After all fixes:
+
+- Reinspect the entire modified codebase.
+- Check for syntax errors.
+- Check for runtime errors.
+- Check for broken references.
+- Check for missing files.
+- Check for duplicate code introduced by fixes.
+- Check for accidental overrides.
+- Check for inconsistent implementations.
+- Check for incomplete changes.
+- Check for unhandled exceptions.
+- Check for unintended side effects.
+- Check for data integrity issues.
+- Check for security issues.
+- Check for regressions.
+- Check all confirmed defects again.
+- Revisit every previously identified release blocker.
+- Revisit every metric marked conceptually flawed.
+- Verify that all intended features remain present.
+- Verify that all tested workflows still work.
+
+Do not rely solely on the tests that were written to verify the fixes. Independently review whether the fixes are correct.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 14 — FINAL PRODUCTION READINESS REPORT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Produce a clear, honest, comprehensive final report.
+
+Include:
+
+1. RELEASE VERDICT:
+READY, READY WITH KNOWN RISKS, or NOT READY.
+
+2. EXECUTIVE SUMMARY:
+Summarize the overall condition of the application.
+
+3. ARCHITECTURE:
+Summarize architecture, code integrity, and major structural concerns.
+
+4. FUNCTIONAL AUDIT:
+Summarize feature correctness and confirmed defects.
+
+5. BUSINESS LOGIC:
+Summarize the validity and consistency of the underlying rules.
+
+6. METRIC AND MATHEMATICAL AUDIT:
+List metrics that passed, metrics with limitations, conceptually flawed metrics, mathematically incorrect metrics, implementation errors, and unverified metrics.
+
+7. DATA INTEGRITY:
+Summarize persistence, storage, backup, migration, and data loss risks.
+
+8. SECURITY:
+Summarize confirmed vulnerabilities, potential vulnerabilities, limitations, and unresolved security risks.
+
+9. UI/UX:
+Summarize usability, navigation, responsive design, accessibility, and interaction problems.
+
+10. PERFORMANCE:
+Summarize measured performance, bottlenecks, stability, and limitations.
+
+11. COMPATIBILITY:
+Summarize browser, device, hosting, and deployment compatibility.
+
+12. BUGS FIXED:
+List confirmed defects that were corrected, including root causes.
+
+13. TEST RESULTS:
+List tests executed, results, and evidence.
+
+14. REGRESSION RESULTS:
+List regression tests performed and their results.
+
+15. UNVERIFIED AREAS:
+Clearly list functionality, environments, security issues, calculations, or workflows that could not be verified.
+
+16. UNRESOLVED ISSUES:
+List remaining issues by severity.
+
+17. DEPLOYMENT CHECKLIST:
+Provide a practical checklist for final deployment.
+
+18. BACKUP AND ROLLBACK:
+Provide a safe rollback and recovery recommendation.
+
+19. POST-LAUNCH RISKS:
+List realistic risks that remain even after the audit.
+
+20. FINAL RECOMMENDATION:
+Clearly explain whether the application should be launched now, launched with known limitations, or held back until further work is completed.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 15 — RELEASE GATE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Apply the following release gate.
+
+CRITICAL issues:
+Must be resolved before release unless a formally justified exception is explicitly approved.
+
+HIGH issues:
+Must be resolved or explicitly documented, assessed, and accepted before release.
+
+MEDIUM issues:
+Must be reviewed and either fixed or consciously accepted with justification.
+
+LOW issues:
+May be deferred if they do not affect reliability, security, usability, or intended functionality materially.
+
+Conceptually flawed decision-critical metrics:
+Must not be treated as valid merely because their implementation and arithmetic are correct. Their use must be corrected, restricted, clearly qualified, or explicitly accepted as a known risk before release.
+
+Unverified critical functionality:
+Must not be declared ready.
+
+Unverified security:
+Must not be described as secure.
+
+Unverified tests:
+Must not be reported as passed.
+
+The release verdict must be evidence-based.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+FINAL OBJECTIVE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Treat this application as a real production product.
+
+Perform an independent, rigorous, evidence-driven audit of the entire codebase and its underlying logic.
+
+Find not only coding mistakes but also fundamental errors in assumptions, definitions, methodology, formulas, metrics, and decision-making logic.
+
+A perfectly coded application can still be fundamentally wrong. A mathematically correct metric can still measure the wrong thing. A feature can appear to work while silently corrupting data. A visually polished application can still be insecure or unreliable.
+
+Challenge the code. Challenge the calculations. Challenge the assumptions. Challenge the logic. Challenge the results.
+
+Do not rush. Do not blindly rewrite. Do not make unsupported claims. Do not declare success merely because the application loads.
+
+First establish the baseline and understand the entire application. Then audit, document, fix confirmed defects, test, perform regression testing, and provide an honest production-readiness assessment.
+
+Begin the audit now.

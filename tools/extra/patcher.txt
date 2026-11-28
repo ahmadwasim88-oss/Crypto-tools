@@ -1,0 +1,17 @@
+I am on an Android phone using Chrome (no terminal, Python, or IDE). 
+Please do not give me Python scripts or raw diffs.
+
+Instead, create a single, self-contained, offline HTML file (a "Client-side Patcher") that I can open in Android Chrome to patch my file.
+
+Requirements for the patcher HTML:
+1. File Picker & UI: Has a clean dark-mode UI with a file input (<input type="file">), drag-and-drop zone, and a "Download Patched HTML" button.
+2. Safe Patching Logic:
+   - Reads the uploaded HTML file as text.
+   - Applies the requested modifications via JavaScript string/regex replacement.
+   - CRITICAL: Never use non-greedy regex like /[\s\S]*?\}/ over nested JavaScript functions or braces (to prevent leaving orphan braces or cut-off functions). Use exact string replacements or positive lookaheads like (?=^[ \t]*function nextFunction).
+   - Ensure the patch is idempotent (safe if run more than once).
+3. Built-in Syntax Validation:
+   - Before offering the download, extract the <script> block from the patched text and test it with `new Function(scriptContent)`.
+   - If it compiles cleanly, show "Syntax check passed (0 errors)" and enable the Download button.
+   - If it throws a SyntaxError, display the error message on screen so it can be fixed.
+4. Download via Blob: Exports the resulting HTML using a Blob (`URL.createObjectURL`) with a clean filename (e.g. `filename_patched.html`).
